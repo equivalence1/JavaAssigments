@@ -16,7 +16,7 @@ public class LazyFactoryRaceTest {
     private LazyFactory lazyFactory = new LazyFactory();
 
     @Test
-    public void testMultiThreadSimple() {
+    public void testMultiThread() {
         Supplier supp = makeSupplier();
         Lazy lazy = lazyFactory.createLazyMultiThread(supp);
         Thread[] threads = new Thread[100];
