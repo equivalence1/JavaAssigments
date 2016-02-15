@@ -12,18 +12,8 @@ import java.util.function.Supplier;
  *
  * @author Kravchenko Dima
  */
-public class LazyFactoryTest {
+public class LazyFactoryRaceTest {
     private LazyFactory lazyFactory = new LazyFactory();
-
-    @Test
-    public void testOneThread() {
-        Supplier supp = makeSupplier();
-        Lazy lazy = lazyFactory.createLazyOneThread(supp);
-
-        for (int i = 0; i < 100; i++) {
-            assertEquals(1, lazy.get());
-        }
-    }
 
     @Test
     public void testMultiThreadSimple() {
@@ -35,9 +25,11 @@ public class LazyFactoryTest {
 
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
-                Object obj = lazy.get();
-                synchronized (lazyResults) {
-                    lazyResults.add(obj);
+                for (int j = 0; j < 5; j++) {
+                    Object obj = lazy.get();
+                    synchronized (lazyResults) {
+                        lazyResults.add(obj);
+                    }
                 }
             });
             threads[i].start();
@@ -64,9 +56,11 @@ public class LazyFactoryTest {
 
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
-                Object obj = lazy.get();
-                synchronized (lazyResults) {
-                    lazyResults.add(obj);
+                for (int j = 0; j < 5; j++) {
+                    Object obj = lazy.get();
+                    synchronized (lazyResults) {
+                        lazyResults.add(obj);
+                    }
                 }
             });
             threads[i].start();
@@ -93,9 +87,11 @@ public class LazyFactoryTest {
 
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
-                Object obj = lazy.get();
-                synchronized (lazyResults) {
-                    lazyResults.add(obj);
+                for (int j = 0; j < 5; j++) {
+                    Object obj = lazy.get();
+                    synchronized (lazyResults) {
+                        lazyResults.add(obj);
+                    }
                 }
             });
             threads[i].start();
@@ -112,7 +108,38 @@ public class LazyFactoryTest {
         checkAllEquals(lazyResults);
     }
 
-    private void checkAllEquals(List lazyResults) {
+    @Test
+    public void testLockFreeWithNull() {
+        Supplier supp = makeNullSupplier();
+        Lazy lazy = lazyFactory.createLazyLockFree(supp);
+        Thread[] threads = new Thread[100];
+
+        final List<Object> lazyResults = new ArrayList<>();
+
+        for (int i = 0; i < threads.length; i++) {
+            threads[i] = new Thread(() -> {
+                for (int j = 0; j < 5; j++) {
+                    Object obj = lazy.get();
+                    synchronized (lazyResults) {
+                        lazyResults.add(obj);
+                    }
+                }
+            });
+            threads[i].start();
+        }
+
+        for (Thread thread : threads) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                //ignoring
+            }
+        }
+
+        checkAllEquals(lazyResults);
+    }
+
+    private void checkAllEquals(List<Object> lazyResults) {
         if (lazyResults.get(0) != null) {
             for (Object obj : lazyResults) {
                 assertTrue(obj.equals(lazyResults.get(0)));
