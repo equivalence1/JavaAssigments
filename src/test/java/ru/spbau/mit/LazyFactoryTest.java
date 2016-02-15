@@ -2,6 +2,9 @@ package ru.spbau.mit;
 
 import org.junit.Test;
 import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 /**
@@ -23,25 +26,61 @@ public class LazyFactoryTest {
     }
 
     @Test
-    public void testMultiThread() {
+    public void testMultiThreadSimple() {
         Supplier supp = makeSupplier();
         Lazy lazy = lazyFactory.createLazyMultiThread(supp);
         Thread[] threads = new Thread[100];
 
-        for (int i = 0; i < 100; i++) {
+        final List<Object> lazyResults = new ArrayList<>();
+
+        for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
-               assertEquals(1, lazy.get());
+                Object obj = lazy.get();
+                synchronized (lazyResults) {
+                    lazyResults.add(obj);
+                }
             });
             threads[i].start();
         }
 
-        for (int i = 0; i < 100; i++) {
+        for (Thread thread : threads) {
             try {
-                threads[i].join();
+                thread.join();
             } catch (InterruptedException e) {
                 //ignoring
             }
         }
+
+        checkAllEquals(lazyResults);
+    }
+
+    @Test
+    public void testMultiThreadWithNull() {
+        Supplier supp = makeNullSupplier();
+        Lazy lazy = lazyFactory.createLazyMultiThread(supp);
+        Thread[] threads = new Thread[100];
+
+        final List<Object> lazyResults = new ArrayList<>();
+
+        for (int i = 0; i < threads.length; i++) {
+            threads[i] = new Thread(() -> {
+                Object obj = lazy.get();
+                synchronized (lazyResults) {
+                    lazyResults.add(obj);
+                }
+            });
+            threads[i].start();
+        }
+
+        for (Thread thread : threads) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                //ignoring
+            }
+        }
+
+        checkAllEquals(lazyResults);
     }
 
     @Test
@@ -50,18 +89,37 @@ public class LazyFactoryTest {
         Lazy lazy = lazyFactory.createLazyLockFree(supp);
         Thread[] threads = new Thread[100];
 
-        for (int i = 0; i < 100; i++) {
+        final List<Object> lazyResults = new ArrayList<>();
+
+        for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
-                assertEquals(1, lazy.get());
+                Object obj = lazy.get();
+                synchronized (lazyResults) {
+                    lazyResults.add(obj);
+                }
             });
             threads[i].start();
         }
 
-        for (int i = 0; i < 100; i++) {
+        for (Thread thread : threads) {
             try {
-                threads[i].join();
+                thread.join();
             } catch (InterruptedException e) {
                 //ignoring
+            }
+        }
+
+        checkAllEquals(lazyResults);
+    }
+
+    private void checkAllEquals(List lazyResults) {
+        if (lazyResults.get(0) != null) {
+            for (Object obj : lazyResults) {
+                assertTrue(obj.equals(lazyResults.get(0)));
+            }
+        } else {
+            for (Object obj : lazyResults) {
+                assertTrue(obj == null);
             }
         }
     }
@@ -87,6 +145,30 @@ public class LazyFactoryTest {
                     //ignoring
                 }
                 return ++cnt;
+            }
+        };
+    }
+
+    private Supplier makeNullSupplier() {
+        return new Supplier() {
+            private boolean was = false;
+
+            @Override
+            public Integer get() {
+                try {
+                    /**
+                     * for better testing I want first Thread to wait longer than others
+                     */
+                    if (was)
+                        Thread.sleep(1000);
+                    else {
+                        was = true;
+                        Thread.sleep(2000);
+                    }
+                } catch (InterruptedException e) {
+                    //ignoring
+                }
+                return null;
             }
         };
     }
