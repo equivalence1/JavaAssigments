@@ -15,26 +15,20 @@ public class LazyFactorySimpleTest {
 
     @Test
     public void testOneThread() {
-        Supplier supp = makeSupplier();
-        Lazy lazy = lazyFactory.createLazyOneThread(supp);
-
-        for (int i = 0; i < 100; i++) {
-            assertEquals(1, lazy.get());
-        }
+        runSimpleTest();
     }
 
     @Test
     public void testMultiThread() {
-        Supplier supp = makeSupplier();
-        Lazy lazy = lazyFactory.createLazyOneThread(supp);
-
-        for (int i = 0; i < 100; i++) {
-            assertEquals(1, lazy.get());
-        }
+        runSimpleTest();
     }
 
     @Test
     public void testLockFree() {
+        runSimpleTest();
+    }
+
+    private void runSimpleTest() {
         Supplier supp = makeSupplier();
         Lazy lazy = lazyFactory.createLazyOneThread(supp);
 

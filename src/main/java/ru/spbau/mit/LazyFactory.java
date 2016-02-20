@@ -1,7 +1,6 @@
 package ru.spbau.mit;
 
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Supplier;
 
 /**
@@ -11,73 +10,79 @@ import java.util.function.Supplier;
  */
 public class LazyFactory {
     public <T> Lazy<T> createLazyOneThread(final Supplier<T> supplier) {
-        return new Lazy<T>() {
-            private T toReturn = null;
-            private boolean isCalculated = false;
-
-            @Override
-            public T get() {
-                if (!isCalculated) {
-                    toReturn = supplier.get();
-                    isCalculated = true;
-                    return toReturn;
-                } else
-                    return toReturn;
-            }
-        };
+        return new LazyOneThread<>(supplier);
     }
 
     public <T> Lazy<T> createLazyMultiThread(final Supplier<T> supplier) {
-        return new Lazy<T>() {
-            private T toReturn = null;
-            private volatile boolean isCalculated = false;
-
-            @Override
-            public T get() {
-                if (!isCalculated) {
-                    synchronized (this) {
-                        if (!isCalculated) {
-                            toReturn = supplier.get();
-                            isCalculated = true;
-                        }
-                    }
-                }
-                return toReturn;
-            }
-        };
+        return new LazyMultiThread<>(supplier);
     }
 
     public <T> Lazy<T> createLazyLockFree(final Supplier<T> supplier) {
-        return new Lazy<T>() {
-            private AtomicReference<T> toReturnRef = new AtomicReference<>();
-            private AtomicInteger isCalculated = new AtomicInteger(0);
-            /**
-             * 0 -- not calculated, 1 -- in progress, 2 -- calculated
-             */
+        return new LazyLockFree<>(supplier);
+    }
 
-            @Override
-            public T get() {
-                if (isCalculated.get() == 0) {
-                    T oldValue = toReturnRef.get();
-                    T newValue = supplier.get();
+    private static class LazyOneThread<T> implements Lazy<T> {
+        private T mValue;
+        private Supplier<T> mSupplier;
 
-                    if (isCalculated.compareAndSet(0, 1)) {
-                        toReturnRef.compareAndSet(oldValue, newValue);
-                        isCalculated.set(2);
+        public LazyOneThread(Supplier<T> supplier) {
+            mSupplier = supplier;
+        }
+
+        public T get() {
+            if (mSupplier != null) {
+                mValue = mSupplier.get();
+                mSupplier = null;
+            }
+
+            return mValue;
+        }
+    }
+
+    private static class LazyMultiThread<T> implements Lazy<T> {
+        private volatile T mValue;
+        private volatile Supplier<T> mSupplier;
+
+        public LazyMultiThread(Supplier<T> supplier) {
+            mSupplier = supplier;
+        }
+
+        public T get() {
+            if (mSupplier != null) {
+                synchronized (this) {
+                    if (mSupplier == null) {
+                        mValue = mSupplier.get();
+                        mSupplier = null;
                     }
                 }
-                while (isCalculated.get() == 1) {
-                    Thread.yield();
-                    /**
-                     * We need to wait. Calculation is in progress.
-                     * It could be done better with Condition (I could `await`
-                     * here and `signal` right after setting `isCalculated` to 2)
-                     * but we have restriction -- only 2 references per
-                     * instance of `Lazy` class
-                     */
-                }
-                return toReturnRef.get();
             }
-        };
+
+            return mValue;
+        }
+    }
+
+    private static class LazyLockFree<T> implements Lazy<T> {
+        private static final Object NONE = new Object();
+        private static final
+                AtomicReferenceFieldUpdater<LazyLockFree, Object> mUpdater =
+                        AtomicReferenceFieldUpdater.newUpdater(
+                                LazyLockFree.class, Object.class, "mValue");
+        private volatile Object mValue = NONE;
+        private volatile Supplier<T> mSupplier;
+
+        public LazyLockFree(Supplier<T> supplier) {
+            mSupplier = supplier;
+        }
+
+        @SuppressWarnings("unchecked")
+        public T get() {
+            if (mSupplier != null) {
+                if (mUpdater.compareAndSet(this, NONE, mSupplier.get())) {
+                    mSupplier = null;
+                }
+            }
+
+            return (T) mValue;
+        }
     }
 }
