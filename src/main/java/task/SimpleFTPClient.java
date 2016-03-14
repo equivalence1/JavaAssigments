@@ -77,17 +77,23 @@ public class SimpleFTPClient {
             e.printStackTrace();
         }
         GlobalNamespace.printError("Aborting");
-        System.exit(1); //TODO something more smart. need to close resources
+        try {
+            stdIn.close();
+        } catch (Exception e1) {
+            //ignoring on this stage
+        }
+        System.exit(1);
     }
 
     public static class ClientSideProtocol {
 
         public static void printUsageMessage() {
             GlobalNamespace.printInfo("Usage:");
-            GlobalNamespace.printInfo("Type 'connect <host> <port> to connect to server.'");
+            GlobalNamespace.printInfo("Type 'connect <host> <port>' to connect to server.'");
             GlobalNamespace.printInfo("Type 'disconnect' if you want to disconnect from server.");
             GlobalNamespace.printInfo("Type 'list <dir path>' to ask server to list directory.");
             GlobalNamespace.printInfo("Type 'get <file path>' to ask server to print file content.");
+            GlobalNamespace.printInfo("Type 'stop' to send to server.'");
             GlobalNamespace.printInfo("Type '?' to see this help again.");
         }
 
@@ -115,6 +121,8 @@ public class SimpleFTPClient {
                     case ("get"):
                         handleGetInput(tokens, in, out);
                         break;
+                    case ("stop"):
+                        handleStopInput(out);
                     case ("?"):
                         handleHelpInput();
                         break;
@@ -165,6 +173,11 @@ public class SimpleFTPClient {
                 GlobalNamespace.printSuccess("Response for 'get':");
                 GlobalNamespace.printNormal(response);
             }
+        }
+
+        private static void handleStopInput(PrintWriter out) throws IOException {
+            out.println("stop");
+            handleDisconnectInput();
         }
 
         private static void handleHelpInput() {
