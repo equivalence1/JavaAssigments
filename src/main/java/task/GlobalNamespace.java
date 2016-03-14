@@ -49,6 +49,24 @@ public class GlobalNamespace {
      * It does not reset colour.
      */
     public static void printNormal(String text) {
-        System.out.print(text);
+        System.out.println(text);
+    }
+
+    public static boolean isInteger(String number) {
+        try {
+            //noinspection ResultOfMethodCallIgnored
+            Integer.parseInt(number);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean isPort(String port) {
+        return isInteger(port) && checkPort(Integer.parseInt(port));
+    }
+
+    private static boolean checkPort(int port) {
+        return port >= 0 && port < (1 << 16);
     }
 }

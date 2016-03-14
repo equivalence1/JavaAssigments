@@ -1,3 +1,3 @@
 #!/bin/bash
 
-java -classpath . task.SimpleFTPClient localhost 8080
+java -classpath . task.SimpleFTPClient
