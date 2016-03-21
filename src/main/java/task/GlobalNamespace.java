@@ -45,11 +45,15 @@ public class GlobalNamespace {
     }
 
     /**
-     * printNormal prints using current colour.
+     * printlnNormal prints using current colour.
      * It does not reset colour.
      */
-    public static void printNormal(String text) {
+    public static void printlnNormal(String text) {
         System.out.println(text);
+    }
+
+    public static void printNormal(String text) {
+        System.out.print(text);
     }
 
     public static boolean isInteger(String number) {

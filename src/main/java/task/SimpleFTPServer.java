@@ -1,9 +1,6 @@
 package task;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -51,8 +48,8 @@ public class SimpleFTPServer {
         try (
                 ServerSocket serverSocket = new ServerSocket(port);
                 Socket clientSocket = serverSocket.accept();
-                PrintWriter out =
-                        new PrintWriter(clientSocket.getOutputStream(), true);
+                DataOutputStream out =
+                        new DataOutputStream(clientSocket.getOutputStream());
                 BufferedReader in = new BufferedReader(
                         new InputStreamReader(clientSocket.getInputStream()))
         ) {
@@ -81,7 +78,7 @@ public class SimpleFTPServer {
             GlobalNamespace.printInfo("Send 'stop' to stop the server.");
         }
 
-        private static void process(String userInput, PrintWriter out) throws IOException {
+        private static void process(String userInput, DataOutputStream out) throws IOException {
             String tokens[] = userInput.split(" ");
             if (tokens.length > 0) {
                 switch (tokens[0]) {
@@ -103,21 +100,21 @@ public class SimpleFTPServer {
             }
         }
 
-        private static void handleListInput(String tokens[], PrintWriter out) throws IOException {
+        private static void handleListInput(String tokens[], DataOutputStream out) throws IOException {
             if (tokens.length != 2) {
                 incorrectInput("list");
             } else {
-                String listResult = FSHandler.list(tokens[1]);
-                out.println(listResult);
+                FSHandler.handleList(tokens[1], out);
+                out.flush();
             }
         }
 
-        private static void handleGetInput(String tokens[], PrintWriter out) throws IOException {
+        private static void handleGetInput(String tokens[], DataOutputStream out) throws IOException {
             if (tokens.length != 2) {
                 incorrectInput("get");
             } else {
-                String getResult = FSHandler.get(tokens[1]);
-                out.println(getResult);
+                FSHandler.handleGet(tokens[1], out);
+                out.flush();
             }
         }
 

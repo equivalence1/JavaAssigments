@@ -1,9 +1,6 @@
 package task;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.Socket;
 
 /**
@@ -16,6 +13,7 @@ public class SimpleFTPClient {
     private static int port;
     private static BufferedReader stdIn;
     private static boolean isConnected = false;
+    private static final int BUFFER_SIZE = 1000000;
 
     public static void main(String args[]) {
         stdIn = new BufferedReader(new InputStreamReader(System.in));
@@ -38,8 +36,7 @@ public class SimpleFTPClient {
         try (
                 Socket ftpSocket = new Socket(host, port);
                 PrintWriter out = new PrintWriter(ftpSocket.getOutputStream(), true);
-                BufferedReader in = new BufferedReader(
-                                new InputStreamReader(ftpSocket.getInputStream()))
+                DataInputStream in = new DataInputStream(ftpSocket.getInputStream())
         ) {
             isConnected = true;
             ClientSideProtocol.printConnectMessage();
@@ -61,7 +58,7 @@ public class SimpleFTPClient {
         }
     }
 
-    private static void interactInsideConnection(BufferedReader in, PrintWriter out)
+    private static void interactInsideConnection(DataInputStream in, PrintWriter out)
             throws IOException {
         String userInput;
         while ((userInput = stdIn.readLine()) != null) {
@@ -105,7 +102,7 @@ public class SimpleFTPClient {
             GlobalNamespace.printSuccess("You are disconnected from server <" + host + ":" + port + ">");
         }
 
-        private static void process(String userInput, BufferedReader in, PrintWriter out) throws IOException {
+        private static void process(String userInput, DataInputStream in, PrintWriter out) throws IOException {
             String tokens[] = userInput.split(" ");
             if (tokens.length > 0) {
                 switch (tokens[0]) {
@@ -153,25 +150,55 @@ public class SimpleFTPClient {
             }
         }
 
-        private static void handleListInput(String tokens[], BufferedReader in, PrintWriter out) throws IOException {
+        private static void handleListInput(String tokens[], DataInputStream in, PrintWriter out) throws IOException {
             if (tokens.length != 2) {
                 incorrectInput("list");
             } else {
                 out.println("list " + tokens[1]);
-                String response = in.readLine();
+
+                StringBuilder response = new StringBuilder();
+                String toAppend;
+
+                long size = in.readLong();
+                toAppend = GlobalNamespace.BLUE + Long.toString(size) + GlobalNamespace.RESET + "\n";
+                response.append(toAppend);
+
+                for (int i = 0; i < size; i++) {
+                    if (i != size - 1) {
+                        toAppend = showFileInfo(in.readUTF(), in.readBoolean()) + "\n";
+                    } else {
+                        toAppend = showFileInfo(in.readUTF(), in.readBoolean());
+                    }
+
+                    response.append(toAppend);
+                }
+
                 GlobalNamespace.printSuccess("Response for 'list':");
-                GlobalNamespace.printNormal(response);
+                GlobalNamespace.printlnNormal(response.toString());
             }
         }
 
-        private static void handleGetInput(String tokens[], BufferedReader in, PrintWriter out) throws IOException {
+        private static void handleGetInput(String tokens[], DataInputStream in, PrintWriter out) throws IOException {
             if (tokens.length != 2) {
                 incorrectInput("get");
             } else {
                 out.println("get " + tokens[1]);
-                String response = in.readLine();
+
+                long size = in.readLong();
                 GlobalNamespace.printSuccess("Response for 'get':");
-                GlobalNamespace.printNormal(response);
+                GlobalNamespace.printInfo("file size: " + Long.toString(size));
+
+                byte[] ioBuf  = new byte[BUFFER_SIZE];
+                for (int i = 0; i < size / BUFFER_SIZE; i++) {
+                    in.read(ioBuf, 0, BUFFER_SIZE);
+                    String newString = new String(ioBuf);
+                    GlobalNamespace.printNormal(newString);
+                }
+
+                ioBuf = new byte[(int)(size % BUFFER_SIZE)];
+                in.read(ioBuf, 0, (int)(size % BUFFER_SIZE));
+                String newString = new String(ioBuf);
+                GlobalNamespace.printlnNormal(newString);
             }
         }
 
@@ -191,6 +218,11 @@ public class SimpleFTPClient {
         private static void incorrectInput(String whichInput) {
             GlobalNamespace.printWarning("Incorrect form of '" + whichInput + "' query.");
             GlobalNamespace.printWarning("Type '?' to get help.");
+        }
+
+        private static String showFileInfo(String name, Boolean isDir) {
+            return  "name: " + GlobalNamespace.GREEN + name + GlobalNamespace.RESET +
+                    ", isDir: " + GlobalNamespace.YELLOW + isDir + GlobalNamespace.RESET;
         }
     }
 }

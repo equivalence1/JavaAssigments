@@ -1,7 +1,6 @@
 package task;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,12 +14,19 @@ import java.util.stream.Collectors;
 
 //means File System Handler
 public class FSHandler {
-    public static String list(String path) {
+    private static final int BUFFER_SIZE = 1000000;
+
+    public static void handleList(String path, DataOutputStream out) {
         Path dir;
         try {
             dir = FileSystems.getDefault().getPath(path);
         } catch (InvalidPathException e) {
-            return "0";
+            try {
+                out.writeLong(0);
+            } catch (IOException ioe) {
+                ioe.printStackTrace();
+            }
+            return;
         }
 
         List<String> names = new ArrayList<>();
@@ -35,58 +41,51 @@ public class FSHandler {
             }
         } catch (IOException | DirectoryIteratorException x) {
             GlobalNamespace.printError("Error while listing directory");
-            return "0";
+            try {
+                out.writeLong(0);
+            } catch (IOException ioe) {
+                ioe.printStackTrace();
+            }
+            return;
         }
 
-        return constructResultList(names, isDir);
+        try {
+            out.writeLong(names.size());
+
+            for (int i = 0; i < names.size(); i++) {
+                out.writeUTF(names.get(i));
+                out.writeBoolean(isDir.get(i));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
-    public static String get(String path) {
+    public static void handleGet(String path, DataOutputStream out) {
         Path file;
         try {
             file = FileSystems.getDefault().getPath(path);
         } catch (InvalidPathException e) {
-            return "0";
+            try {
+                out.writeLong(0);
+            } catch (IOException ioe) {
+                ioe.printStackTrace();
+            }
+            return;
         }
 
-        try {
-            List<String> lines = Files.readAllLines(file);
-            return constructResultGet(lines);
-        } catch (IOException | DirectoryIteratorException x) {
-            GlobalNamespace.printError("Error while listing directory");
-            return "0";
+        try (FileInputStream fis = new FileInputStream(file.toFile());
+                BufferedInputStream in = new BufferedInputStream(fis)) {
+            out.writeLong(file.toFile().getTotalSpace());
+
+            byte[] ioBuf = new byte[BUFFER_SIZE];
+            int bytesRead;
+            while ((bytesRead = in.read(ioBuf)) != -1){
+                out.write(ioBuf, 0, bytesRead);
+            }
+        } catch (IOException | DirectoryIteratorException e) {
+            GlobalNamespace.printError("Error while getting file");
+            e.printStackTrace();
         }
-    }
-
-    private static String constructResultList(List<String> names, List<Boolean> isDir) {
-        StringBuilder result = new StringBuilder();
-        String toAppend = GlobalNamespace.BLUE + names.size() + GlobalNamespace.RESET;
-        result.append(toAppend);
-
-        for (int i = 0; i < names.size(); i++) {
-            if (i != names.size() - 1)
-                toAppend = newEntry(names.get(i), isDir.get(i), ",");
-            else
-                toAppend = newEntry(names.get(i), isDir.get(i), "");
-            result.append(toAppend);
-        }
-
-        return result.toString();
-    }
-
-    private static String newEntry(String name, Boolean isDir, String suffix) {
-        return " (" + GlobalNamespace.GREEN + name + GlobalNamespace.RESET + " " +
-                GlobalNamespace.YELLOW + isDir + GlobalNamespace.RESET + ")" + suffix;
-    }
-
-    private static String constructResultGet(List<String> lines) {
-        StringBuilder result = new StringBuilder();
-        long size = lines.stream().map(String::length).collect(Collectors.summarizingInt(x -> x)).getSum();
-        String toAppend = GlobalNamespace.BLUE + "<size: " + size + ">" + GlobalNamespace.RESET + " ";
-        result.append(toAppend);
-
-        lines.forEach(result::append);
-
-        return result.toString();
     }
 }
