@@ -8,7 +8,7 @@ import java.net.Socket;
  *
  * @author Kravchenko Dima
  */
-public class SimpleFTPClient {
+public class TorrentClient {
     private static String host;
     private static int port;
     private static BufferedReader stdIn;
@@ -28,8 +28,8 @@ public class SimpleFTPClient {
     }
 
     private static void setHostAndPort(String host, int port) {
-        SimpleFTPClient.host = host;
-        SimpleFTPClient.port = port;
+        TorrentClient.host = host;
+        TorrentClient.port = port;
     }
 
     private static void connect() {
@@ -69,11 +69,11 @@ public class SimpleFTPClient {
     }
 
     private static void endWithError(String error, Exception e) {
-        GlobalNamespace.printError(error);
+        GlobalFunctions.printError(error);
         if (e != null) {
             e.printStackTrace();
         }
-        GlobalNamespace.printError("Aborting");
+        GlobalFunctions.printError("Aborting");
         try {
             stdIn.close();
         } catch (Exception e1) {
@@ -85,21 +85,21 @@ public class SimpleFTPClient {
     public static class ClientSideProtocol {
 
         public static void printUsageMessage() {
-            GlobalNamespace.printInfo("Usage:");
-            GlobalNamespace.printInfo("Type 'connect <host> <port>' to connect to server.'");
-            GlobalNamespace.printInfo("Type 'disconnect' if you want to disconnect from server.");
-            GlobalNamespace.printInfo("Type 'list <dir path>' to ask server to list directory.");
-            GlobalNamespace.printInfo("Type 'get <file path>' to ask server to print file content.");
-            GlobalNamespace.printInfo("Type 'stop' to send to server.'");
-            GlobalNamespace.printInfo("Type '?' to see this help again.");
+            GlobalFunctions.printInfo("Usage:");
+            GlobalFunctions.printInfo("Type 'connect <host> <port>' to connect to server.'");
+            GlobalFunctions.printInfo("Type 'disconnect' if you want to disconnect from server.");
+            GlobalFunctions.printInfo("Type 'list <dir path>' to ask server to list directory.");
+            GlobalFunctions.printInfo("Type 'get <file path>' to ask server to print file content.");
+            GlobalFunctions.printInfo("Type 'stop' to send to server.'");
+            GlobalFunctions.printInfo("Type '?' to see this help again.");
         }
 
         private static void printConnectMessage() {
-            GlobalNamespace.printSuccess("You are now connected to server <" + host + ":" + port + ">");
+            GlobalFunctions.printSuccess("You are now connected to server <" + host + ":" + port + ">");
         }
 
         private static void printDisconnectMessage() {
-            GlobalNamespace.printSuccess("You are disconnected from server <" + host + ":" + port + ">");
+            GlobalFunctions.printSuccess("You are disconnected from server <" + host + ":" + port + ">");
         }
 
         private static void process(String userInput, DataInputStream in, PrintWriter out) throws IOException {
@@ -131,9 +131,9 @@ public class SimpleFTPClient {
 
         private static void handleConnectInput(String tokens[]) {
             if (isConnected) {
-                GlobalNamespace.printWarning("You are already connected to server. You need to disconnect firstly.");
+                GlobalFunctions.printWarning("You are already connected to server. You need to disconnect firstly.");
             } else {
-                if (tokens.length == 3 && GlobalNamespace.isPort(tokens[2])) {
+                if (tokens.length == 3 && GlobalFunctions.isPort(tokens[2])) {
                     setHostAndPort(tokens[1], Integer.parseInt(tokens[2]));// NumberFormatException cannot occur here
                     connect();
                 } else {
@@ -146,7 +146,7 @@ public class SimpleFTPClient {
             if (isConnected) {
                 disconnect();
             } else {
-                GlobalNamespace.printWarning("You are not connected to any server yet.");
+                GlobalFunctions.printWarning("You are not connected to any server yet.");
             }
         }
 
@@ -160,7 +160,7 @@ public class SimpleFTPClient {
                 String toAppend;
 
                 long size = in.readLong();
-                toAppend = GlobalNamespace.BLUE + Long.toString(size) + GlobalNamespace.RESET + "\n";
+                toAppend = GlobalFunctions.BLUE + Long.toString(size) + GlobalFunctions.RESET + "\n";
                 response.append(toAppend);
 
                 for (int i = 0; i < size; i++) {
@@ -173,8 +173,8 @@ public class SimpleFTPClient {
                     response.append(toAppend);
                 }
 
-                GlobalNamespace.printSuccess("Response for 'list':");
-                GlobalNamespace.printlnNormal(response.toString());
+                GlobalFunctions.printSuccess("Response for 'list':");
+                GlobalFunctions.printlnNormal(response.toString());
             }
         }
 
@@ -185,20 +185,20 @@ public class SimpleFTPClient {
                 out.println("get " + tokens[1]);
 
                 long size = in.readLong();
-                GlobalNamespace.printSuccess("Response for 'get':");
-                GlobalNamespace.printInfo("file size: " + Long.toString(size));
+                GlobalFunctions.printSuccess("Response for 'get':");
+                GlobalFunctions.printInfo("file size: " + Long.toString(size));
 
                 byte[] ioBuf  = new byte[BUFFER_SIZE];
                 for (int i = 0; i < size / BUFFER_SIZE; i++) {
                     in.read(ioBuf, 0, BUFFER_SIZE);
                     String newString = new String(ioBuf);
-                    GlobalNamespace.printNormal(newString);
+                    GlobalFunctions.printNormal(newString);
                 }
 
                 ioBuf = new byte[(int)(size % BUFFER_SIZE)];
                 in.read(ioBuf, 0, (int)(size % BUFFER_SIZE));
                 String newString = new String(ioBuf);
-                GlobalNamespace.printlnNormal(newString);
+                GlobalFunctions.printlnNormal(newString);
             }
         }
 
@@ -212,17 +212,17 @@ public class SimpleFTPClient {
         }
 
         private static void handleUnknownInput() {
-            GlobalNamespace.printWarning("Unknown command. Type '?' to see usage.");
+            GlobalFunctions.printWarning("Unknown command. Type '?' to see usage.");
         }
 
         private static void incorrectInput(String whichInput) {
-            GlobalNamespace.printWarning("Incorrect form of '" + whichInput + "' query.");
-            GlobalNamespace.printWarning("Type '?' to get help.");
+            GlobalFunctions.printWarning("Incorrect form of '" + whichInput + "' query.");
+            GlobalFunctions.printWarning("Type '?' to get help.");
         }
 
         private static String showFileInfo(String name, Boolean isDir) {
-            return  "name: " + GlobalNamespace.GREEN + name + GlobalNamespace.RESET +
-                    ", isDir: " + GlobalNamespace.YELLOW + isDir + GlobalNamespace.RESET;
+            return  "name: " + GlobalFunctions.GREEN + name + GlobalFunctions.RESET +
+                    ", isDir: " + GlobalFunctions.YELLOW + isDir + GlobalFunctions.RESET;
         }
     }
 }

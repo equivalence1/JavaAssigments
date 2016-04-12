@@ -4,7 +4,6 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Created by equi on 14.03.16.
@@ -40,7 +39,7 @@ public class FSHandler {
                 isDir.add(file.isDirectory());
             }
         } catch (IOException | DirectoryIteratorException x) {
-            GlobalNamespace.printError("Error while listing directory");
+            GlobalFunctions.printError("Error while listing directory");
             try {
                 out.writeLong(0);
             } catch (IOException ioe) {
@@ -84,7 +83,7 @@ public class FSHandler {
                 out.write(ioBuf, 0, bytesRead);
             }
         } catch (IOException | DirectoryIteratorException e) {
-            GlobalNamespace.printError("Error while getting file");
+            GlobalFunctions.printError("Error while getting file");
             e.printStackTrace();
         }
     }

@@ -1,4 +1,7 @@
-package task;
+package task.task.server;
+
+import task.FSHandler;
+import task.GlobalFunctions;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -10,22 +13,23 @@ import java.net.Socket;
  * @author Kravchenko Dima
  */
 public class SimpleFTPServer {
-    private static int port;
-    private static final String usageString = "Usage: java SimpleFTPServer <port>\nAborting";
+    private static final int PORT = 8081;
+    private static final int PART_SIZE = 10 * 1024 * 1024; // 10M
+    private static final int UPDATE_TL = 5 * 60; // 5 min
+    //private static final String USAGE = "Usage: java SimpleFTPServer <PORT>\nAborting";
     private static boolean isRunning;
 
     public static void main(String args[]) {
-        if (!checkArgs(args)) {
-            GlobalNamespace.printWarning(usageString);
+        /*if (!checkArgs(args)) {
+            GlobalFunctions.printWarning(USAGE);
             return;
-        }
+        }*/
 
         isRunning = true;
 
-        setPort(args);
         startHandleConnections();
     }
-
+/*
     private static boolean checkArgs(String args[]) {
         if (args.length != 1) {
             return false;
@@ -38,22 +42,18 @@ public class SimpleFTPServer {
             return false;
         }
     }
-
-    private static void setPort(String args[]) {
-        port = Integer.parseInt(args[0]);
-    }
-
+*/
     private static void startHandleConnections() {
-        GlobalNamespace.printInfo("Establishing connection.");
+        GlobalFunctions.printInfo("Establishing connection.");
         try (
-                ServerSocket serverSocket = new ServerSocket(port);
+                ServerSocket serverSocket = new ServerSocket(PORT);
                 Socket clientSocket = serverSocket.accept();
                 DataOutputStream out =
                         new DataOutputStream(clientSocket.getOutputStream());
                 BufferedReader in = new BufferedReader(
                         new InputStreamReader(clientSocket.getInputStream()))
         ) {
-            GlobalNamespace.printSuccess("Connection established.");
+            GlobalFunctions.printSuccess("Connection established.");
             String inputLine;
 
             while ((inputLine = in.readLine()) != null) {
@@ -62,9 +62,9 @@ public class SimpleFTPServer {
                     break;
             }
 
-            GlobalNamespace.printWarning("Client closed the connection.");
+            GlobalFunctions.printWarning("ClientInfo closed the connection.");
         } catch (Exception e) {
-            GlobalNamespace.printError("Can not listen to the port #" + port);
+            GlobalFunctions.printError("Can not listen to the PORT #" + PORT);
             e.printStackTrace();
         }
     }
@@ -72,10 +72,10 @@ public class SimpleFTPServer {
     public static class ServerSideProtocol {
 
         public static void printUsageMessage() {
-            GlobalNamespace.printInfo("Usage:");
-            GlobalNamespace.printInfo("Send 'list <dir path>' to ask server to list directory.");
-            GlobalNamespace.printInfo("Send 'get <file path>' to ask server to print file content.");
-            GlobalNamespace.printInfo("Send 'stop' to stop the server.");
+            GlobalFunctions.printInfo("Usage:");
+            GlobalFunctions.printInfo("Send 'list <dir path>' to ask server to list directory.");
+            GlobalFunctions.printInfo("Send 'get <file path>' to ask server to print file content.");
+            GlobalFunctions.printInfo("Send 'stop' to stop the server.");
         }
 
         private static void process(String userInput, DataOutputStream out) throws IOException {
@@ -127,15 +127,15 @@ public class SimpleFTPServer {
         }
 
         private static void handleUnknownInput() {
-            GlobalNamespace.printWarning("Unknown command. Type '?' to see usage.");
+            GlobalFunctions.printWarning("Unknown command. Type '?' to see usage.");
         }
 
         /**
          * this method should never be invoked on server. Just in case something strange happened
          */
         private static void incorrectInput(String whichInput) {
-            GlobalNamespace.printWarning("Incorrect form of '" + whichInput + "' query.");
-            GlobalNamespace.printWarning("Type '?' to get help.");
+            GlobalFunctions.printWarning("Incorrect form of '" + whichInput + "' query.");
+            GlobalFunctions.printWarning("Type '?' to get help.");
         }
     }
 }

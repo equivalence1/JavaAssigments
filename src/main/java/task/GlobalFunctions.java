@@ -5,7 +5,7 @@ package task;
  *
  * @author Kravchenko Dima
  */
-public class GlobalNamespace {
+public class GlobalFunctions {
     public static final String RESET = "\u001b[0m";
     public static final String RED = "\u001b[31m";
     public static final String GREEN = "\u001b[32m";
