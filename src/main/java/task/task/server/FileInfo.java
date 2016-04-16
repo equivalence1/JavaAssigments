@@ -1,7 +1,7 @@
 package task.task.server;
 
-import java.util.LinkedList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -10,22 +10,28 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * @author Kravchenko Dima
  */
-public class FileInfo {
+class FileInfo {
     int id;
     String name;
     long size;
 
-    List<ClientInfo> activeClientInfos; //TODO should it be concurrent?
+    Set<ClientInfo> activeClientInfos; //TODO should it be concurrent?
     ReadWriteLock clientsLock;
 
-    public FileInfo() {
-        activeClientInfos = new LinkedList<>();
+    FileInfo() {
+        activeClientInfos = new HashSet<>();
         clientsLock = new ReentrantReadWriteLock();
     }
 
     void addClient(ClientInfo clientInfo) {
         clientsLock.writeLock().lock();
         activeClientInfos.add(clientInfo);
+        clientsLock.writeLock().unlock();
+    }
+
+    void deleteClient(ClientInfo clientInfo) {
+        clientsLock.writeLock().lock();
+        activeClientInfos.remove(clientInfo);
         clientsLock.writeLock().unlock();
     }
 }

@@ -1,6 +1,7 @@
 package task.task.server;
 
 import java.net.Socket;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -13,17 +14,18 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 class ClientInfo {
     Socket socket;
     private long lastUpdateTime; // Unix time
-    List<FileInfo> files;
+    private List<FileInfo> files;
     ReadWriteLock filesLock;
     int port;
 
     ClientInfo(Socket socket) {
         this.socket = socket;
+        files = new LinkedList<>();
         lastUpdateTime = System.currentTimeMillis() / 1000L;
         filesLock = new ReentrantReadWriteLock();
     }
 
-    public void update() {
+    void update() {
         lastUpdateTime = System.currentTimeMillis() / 1000L;
     }
 
@@ -38,6 +40,11 @@ class ClientInfo {
     }
 
     void clearFiles() {
+        filesLock.writeLock().lock();
+        for (FileInfo fileInfo : files) {
+            fileInfo.deleteClient(this);
+        }
         files.clear();
+        filesLock.writeLock().unlock();
     }
 }

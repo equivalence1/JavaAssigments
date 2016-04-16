@@ -29,7 +29,6 @@ public class TorrentTracker {
         state = ServerStates.RUNNING;
 
         files = new HashMap<>();
-
         filesLock = new ReentrantReadWriteLock();
 
         startHandleConnections();
@@ -62,7 +61,7 @@ public class TorrentTracker {
     }
 
     private enum ServerStates {
-        RUNNING
+        RUNNING, DOWN
     }
 
     private class ClientListener implements Runnable{
@@ -82,7 +81,7 @@ public class TorrentTracker {
 
         public void run() {
             try {
-                in = new DataInputStream(socket.getInputStream());
+                in  = new DataInputStream(socket.getInputStream());
                 out = new DataOutputStream(socket.getOutputStream());
 
                 while (true) {
@@ -163,23 +162,27 @@ public class TorrentTracker {
             filesLock.readLock().unlock();
 
             if (fileInfo != null) {
-                out.writeInt(fileInfo.activeClientInfos.size());
-                for (ClientInfo clientInfo : fileInfo.activeClientInfos) {
-                    out.write(clientInfo.socket.getInetAddress().getAddress());
-                    out.writeShort(clientInfo.socket.getPort());
+                try {
+                    fileInfo.clientsLock.readLock().lock();
+                    out.writeInt(fileInfo.activeClientInfos.size());
+                    for (ClientInfo clientInfo : fileInfo.activeClientInfos) {
+                        out.write(clientInfo.socket.getInetAddress().getAddress());
+                        out.writeShort(clientInfo.socket.getPort());
+                    }
+                } finally {
+                    fileInfo.clientsLock.readLock().unlock();
                 }
             }
         }
 
         private void handleUpdateQuery() throws IOException {
-            clientInfo.update();
-
-            short port = in.readShort();
-            int count = in.readInt();
-
             try {
-                clientInfo.filesLock.writeLock().lock();
+                short port = in.readShort();
+                int count  = in.readInt();
+
+                clientInfo.update();
                 clientInfo.clearFiles();
+                clientInfo.filesLock.writeLock().lock();
                 clientInfo.port = port;
 
                 for (int i = 0; i < count; i++) {
@@ -193,6 +196,13 @@ public class TorrentTracker {
 
                 out.writeBoolean(true);
             } catch (Exception e) {
+                /**
+                 * note that if some exception occurred and we send `false`
+                 * which means that we did not update information, we still
+                 * clear files list. I think it's ok as we can not
+                 * guarantee which files he keeps now and it's better to
+                 * suppose that he doesn't have any files at all.
+                 */
                 out.writeBoolean(false);
                 throw e;
             } finally {
@@ -206,6 +216,7 @@ public class TorrentTracker {
 
         private void disconnect() {
             closeStreams();
+            state = ServerStates.DOWN;
         }
 
         private void closeStreams() {
