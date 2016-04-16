@@ -1,14 +1,14 @@
 package task.task.server;
 
-import task.FSHandler;
 import task.GlobalFunctions;
 
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Created by equi on 14.03.16.
@@ -17,114 +17,210 @@ import java.net.Socket;
  */
 public class TorrentTracker {
     private static final int PORT = 8081;
-    private static final int PART_SIZE = 10 * 1024 * 1024; // 10M
     private static final int UPDATE_TL = 5 * 60; // 5 min
-    //private static final String USAGE = "Usage: java SimpleFTPServer <PORT>\nAborting";
-    private static boolean isRunning;
+    private ServerStates state;
 
-    public static void main(String args[]) {
-        isRunning = true;
+    private Map<Integer, FileInfo> files;
+    private ReadWriteLock filesLock;
+
+    private int curId = 0;
+
+    public void start() {
+        state = ServerStates.RUNNING;
+
+        files = new HashMap<>();
+
+        filesLock = new ReentrantReadWriteLock();
+
         startHandleConnections();
     }
 
-    private static void startHandleConnections() {
+    private void startHandleConnections() {
         GlobalFunctions.printInfo("Starting to accept connections.");
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            while (isRunning) {
-                try (
-                        Socket clientSocket = serverSocket.accept();
-                        DataOutputStream out =
-                                new DataOutputStream(clientSocket.getOutputStream());
-                        BufferedReader in = new BufferedReader(
-                                new InputStreamReader(clientSocket.getInputStream()))
-                ) {
-                    GlobalFunctions.printSuccess("Connection accepted.");
-                    String inputLine;
-
-                    while ((inputLine = in.readLine()) != null) {
-                        ServerSideProtocol.process(inputLine, out);
-                        if (!isRunning)
-                            break;
-                    }
-
-                    GlobalFunctions.printWarning("ClientInfo closed the connection.");
-                } catch (Exception e) {
-                    
-                }
+            while (state == ServerStates.RUNNING) {
+                acceptNewConnection(serverSocket);
             }
         } catch (Exception e) {
-            GlobalFunctions.printError("Failed to create ServerSocket.");
+            GlobalFunctions.printError("Could not create ServerSocket. See trace.");
             e.printStackTrace();
         }
     }
 
-    public static class ServerSideProtocol {
+    private void acceptNewConnection(ServerSocket serverSocket) {
+        try {
+            Socket clientSocket = serverSocket.accept();
+            GlobalFunctions.printSuccess("Connection accepted."); // TODO from who?
 
-        public static void printUsageMessage() {
-            GlobalFunctions.printInfo("Usage:");
-            GlobalFunctions.printInfo("Send 'list <dir path>' to ask server to list directory.");
-            GlobalFunctions.printInfo("Send 'get <file path>' to ask server to print file content.");
-            GlobalFunctions.printInfo("Send 'stop' to stop the server.");
+            ClientListener listener = new ClientListener(clientSocket);
+            Thread clientThread = new Thread(listener);
+            clientThread.start();
+        } catch (Exception e) {
+            GlobalFunctions.printError("Could not accept connection. See trace.");
+            e.printStackTrace();
+        }
+    }
+
+    private enum ServerStates {
+        RUNNING
+    }
+
+    private class ClientListener implements Runnable{
+        private Socket socket;
+
+        private DataInputStream in;
+        private DataOutputStream out;
+
+        private ClientInfo clientInfo;
+
+        private byte lastQuery;
+
+        private ClientListener(Socket socket) {
+            this.socket = socket;
+            clientInfo = new ClientInfo(this.socket);
         }
 
-        private static void process(String userInput, DataOutputStream out) throws IOException {
-            String tokens[] = userInput.split(" ");
-            if (tokens.length > 0) {
-                switch (tokens[0]) {
-                    case ("list"):
-                        handleListInput(tokens, out);
+        public void run() {
+            try {
+                in = new DataInputStream(socket.getInputStream());
+                out = new DataOutputStream(socket.getOutputStream());
+
+                while (true) {
+                    if (hasPendingQuery())
+                        handleQuery();
+                    if (reachedUpdateTL())
                         break;
-                    case ("get"):
-                        handleGetInput(tokens, out);
-                        break;
-                    case ("stop"):
-                        handleStopInput();
-                        break;
-                    case ("?"):
-                        handleHelpInput();
-                        break;
-                    default:
-                        handleUnknownInput();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                disconnect();
+            }
+        }
+
+        private boolean hasPendingQuery() throws IOException {
+            try {
+                lastQuery = in.readByte();
+                return true;
+            } catch (EOFException e) {
+                return false;
+            }
+        }
+
+        private void handleQuery() throws IOException {
+            switch (lastQuery) {
+                case 1:
+                    handleListQuery();
+                    break;
+                case 2:
+                    handleUploadQuery();
+                    break;
+                case 3:
+                    handleSourcesQuery();
+                    break;
+                case 4:
+                    handleUpdateQuery();
+                    break;
+                default:
+                    throw new IOException("unknown query code");
+            }
+        }
+
+        private void handleListQuery() throws IOException {
+            filesLock.readLock().lock();
+
+            try {
+                out.writeInt(files.size());
+                for (FileInfo fileInfo : files.values()) {
+                    out.writeInt(fileInfo.id);
+                    out.writeUTF(fileInfo.name);
+                    out.writeLong(fileInfo.size);
+                }
+            } finally {
+                filesLock.readLock().unlock();
+            }
+        }
+
+        private void handleUploadQuery() throws IOException {
+            FileInfo file = new FileInfo();
+            file.id = curId++;
+            file.name = in.readUTF();
+            file.size = in.readLong();
+
+            clientInfo.addFile(file);
+            file.addClient(clientInfo);
+
+            filesLock.writeLock().lock();
+            files.put(file.id, file);
+            filesLock.writeLock().unlock();
+        }
+
+        private void handleSourcesQuery() throws IOException {
+            int fileId = in.readInt();
+
+            filesLock.readLock().lock();
+            FileInfo fileInfo = files.get(fileId);
+            filesLock.readLock().unlock();
+
+            if (fileInfo != null) {
+                out.writeInt(fileInfo.activeClientInfos.size());
+                for (ClientInfo clientInfo : fileInfo.activeClientInfos) {
+                    out.write(clientInfo.socket.getInetAddress().getAddress());
+                    out.writeShort(clientInfo.socket.getPort());
                 }
             }
         }
 
-        private static void handleListInput(String tokens[], DataOutputStream out) throws IOException {
-            if (tokens.length != 2) {
-                incorrectInput("list");
-            } else {
-                FSHandler.handleList(tokens[1], out);
-                out.flush();
+        private void handleUpdateQuery() throws IOException {
+            clientInfo.update();
+
+            short port = in.readShort();
+            int count = in.readInt();
+
+            try {
+                clientInfo.filesLock.writeLock().lock();
+                clientInfo.clearFiles();
+                clientInfo.port = port;
+
+                for (int i = 0; i < count; i++) {
+                    int id = in.readInt();
+
+                    FileInfo fileInfo = files.get(id);
+
+                    if (fileInfo != null)
+                        clientInfo.addFile(fileInfo);
+                }
+
+                out.writeBoolean(true);
+            } catch (Exception e) {
+                out.writeBoolean(false);
+                throw e;
+            } finally {
+                clientInfo.filesLock.writeLock().unlock();
             }
         }
 
-        private static void handleGetInput(String tokens[], DataOutputStream out) throws IOException {
-            if (tokens.length != 2) {
-                incorrectInput("get");
-            } else {
-                FSHandler.handleGet(tokens[1], out);
-                out.flush();
+        private boolean reachedUpdateTL() {
+            return clientInfo.sinceLastUpdate() > UPDATE_TL;
+        }
+
+        private void disconnect() {
+            closeStreams();
+        }
+
+        private void closeStreams() {
+            try {
+                if (in != null)
+                    in.close();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        }
-
-        private static void handleStopInput() {
-            isRunning = false;
-        }
-
-        private static void handleHelpInput() {
-            printUsageMessage();
-        }
-
-        private static void handleUnknownInput() {
-            GlobalFunctions.printWarning("Unknown command. Type '?' to see usage.");
-        }
-
-        /**
-         * this method should never be invoked on server. Just in case if something strange happened
-         */
-        private static void incorrectInput(String whichInput) {
-            GlobalFunctions.printWarning("Incorrect form of '" + whichInput + "' query.");
-            GlobalFunctions.printWarning("Type '?' to get help.");
+            try {
+                if (out != null)
+                    out.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 }
