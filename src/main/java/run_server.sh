@@ -1,5 +1,6 @@
 #!/bin/bash
 
-rm task/*.class
-javac task/*
-java -classpath . task.SimpleFTPServer 8080
+rm task/server/*.class
+javac task/server/*
+java -classpath . task.server.TorrentTrackerConsole
+rm task/server/*.class

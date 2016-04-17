@@ -1,3 +1,6 @@
 #!/bin/bash
 
-java -classpath . task.SimpleFTPClient
+rm task/client/*.class
+javac task/client/*
+java -classpath . task.server.TorrentClientConsole
+rm task/client/*.class

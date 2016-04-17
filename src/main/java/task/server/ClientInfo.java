@@ -1,4 +1,4 @@
-package task.task.server;
+package task.server;
 
 import java.net.Socket;
 import java.util.LinkedList;
@@ -12,34 +12,34 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @author Kravchenko Dima
  */
 class ClientInfo {
-    Socket socket;
+    public Socket socket; // FIXME public?
     private long lastUpdateTime; // Unix time
     private List<FileInfo> files;
-    ReadWriteLock filesLock;
+    public ReadWriteLock filesLock; // FIXME public?
     int port;
 
-    ClientInfo(Socket socket) {
+    public ClientInfo(Socket socket) {
         this.socket = socket;
         files = new LinkedList<>();
         lastUpdateTime = System.currentTimeMillis() / 1000L;
         filesLock = new ReentrantReadWriteLock();
     }
 
-    void update() {
+    public void update() {
         lastUpdateTime = System.currentTimeMillis() / 1000L;
     }
 
-    long sinceLastUpdate() {
+    public long sinceLastUpdate() {
         return System.currentTimeMillis() / 1000L - lastUpdateTime;
     }
 
-    void addFile(FileInfo fileInfo) {
+    public void addFile(FileInfo fileInfo) {
         filesLock.writeLock().lock();
         files.add(fileInfo);
         filesLock.writeLock().unlock();
     }
 
-    void clearFiles() {
+    public void clearFiles() {
         filesLock.writeLock().lock();
         for (FileInfo fileInfo : files) {
             fileInfo.deleteClient(this);

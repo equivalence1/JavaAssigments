@@ -1,4 +1,4 @@
-package task.task.server;
+package task.server;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -18,18 +18,18 @@ class FileInfo {
     Set<ClientInfo> activeClientInfos; //TODO should it be concurrent?
     ReadWriteLock clientsLock;
 
-    FileInfo() {
+    public FileInfo() {
         activeClientInfos = new HashSet<>();
         clientsLock = new ReentrantReadWriteLock();
     }
 
-    void addClient(ClientInfo clientInfo) {
+    public void addClient(ClientInfo clientInfo) {
         clientsLock.writeLock().lock();
         activeClientInfos.add(clientInfo);
         clientsLock.writeLock().unlock();
     }
 
-    void deleteClient(ClientInfo clientInfo) {
+    public void deleteClient(ClientInfo clientInfo) {
         clientsLock.writeLock().lock();
         activeClientInfos.remove(clientInfo);
         clientsLock.writeLock().unlock();

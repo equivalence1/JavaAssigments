@@ -1,4 +1,6 @@
-package task;
+package task.client;
+
+import task.GlobalFunctions;
 
 import java.io.*;
 import java.net.Socket;
@@ -21,7 +23,7 @@ public class TorrentClient {
 
         try {
             interactGlobal();
-            stdIn.close();
+            stdIn.close(); // TODO delete?
         } catch (Exception e) {
             endWithError("Error occurred during session. See trace", e);
         }
@@ -34,9 +36,9 @@ public class TorrentClient {
 
     private static void connect() {
         try (
-                Socket ftpSocket = new Socket(host, port);
-                PrintWriter out = new PrintWriter(ftpSocket.getOutputStream(), true);
-                DataInputStream in = new DataInputStream(ftpSocket.getInputStream())
+                Socket socket = new Socket(host, port);
+                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                DataInputStream in = new DataInputStream(socket.getInputStream())
         ) {
             isConnected = true;
             ClientSideProtocol.printConnectMessage();
@@ -75,7 +77,7 @@ public class TorrentClient {
         }
         GlobalFunctions.printError("Aborting");
         try {
-            stdIn.close();
+            stdIn.close(); // TODO delete?
         } catch (Exception e1) {
             //ignoring on this stage
         }

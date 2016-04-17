@@ -1,4 +1,6 @@
-package task;
+package task.client;
+
+import task.GlobalFunctions;
 
 import java.io.*;
 import java.nio.file.*;
