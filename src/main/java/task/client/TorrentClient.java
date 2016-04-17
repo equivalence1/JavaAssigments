@@ -2,8 +2,13 @@ package task.client;
 
 import task.GlobalFunctions;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
+
+import static java.lang.Thread.sleep;
 
 /**
  * Created by equi on 14.03.16.
@@ -11,220 +16,162 @@ import java.net.Socket;
  * @author Kravchenko Dima
  */
 public class TorrentClient {
-    private static String host;
-    private static int port;
-    private static BufferedReader stdIn;
-    private static boolean isConnected = false;
-    private static final int BUFFER_SIZE = 1000000;
+    private int port;
+    private TorrentClientServer clientServer;
+    private Socket socket;
 
-    public static void main(String args[]) {
-        stdIn = new BufferedReader(new InputStreamReader(System.in));
-        ClientSideProtocol.printUsageMessage();
+    private DataInputStream in;
+    private DataOutputStream out;
+
+    public TorrentClient(int port) {
+        this.port = port;
+        clientServer = new TorrentClientServer(port);
 
         try {
-            interactGlobal();
-            stdIn.close(); // TODO delete?
-        } catch (Exception e) {
-            endWithError("Error occurred during session. See trace", e);
-        }
-    }
-
-    private static void setHostAndPort(String host, int port) {
-        TorrentClient.host = host;
-        TorrentClient.port = port;
-    }
-
-    private static void connect() {
-        try (
-                Socket socket = new Socket(host, port);
-                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                DataInputStream in = new DataInputStream(socket.getInputStream())
-        ) {
-            isConnected = true;
-            ClientSideProtocol.printConnectMessage();
-            interactInsideConnection(in, out);
-        } catch (Exception e) {
-            endWithError("Error occurred during session. See trace", e);
-        }
-    }
-
-    private static void disconnect() {
-        isConnected = false;
-        ClientSideProtocol.printDisconnectMessage();
-    }
-
-    private static void interactGlobal() throws IOException {
-        String userInput;
-        while ((userInput = stdIn.readLine()) != null) {
-            ClientSideProtocol.process(userInput, null, null);
-        }
-    }
-
-    private static void interactInsideConnection(DataInputStream in, PrintWriter out)
-            throws IOException {
-        String userInput;
-        while ((userInput = stdIn.readLine()) != null) {
-            ClientSideProtocol.process(userInput, in, out);
-            if (!isConnected)
-                return;
-        }
-    }
-
-    private static void endWithError(String error, Exception e) {
-        GlobalFunctions.printError(error);
-        if (e != null) {
+            socket = new Socket("localhost", 8081);
+            in  = new DataInputStream(socket.getInputStream());
+            out = new DataOutputStream(socket.getOutputStream());
+        } catch (IOException e) {
+            GlobalFunctions.printError("could not create socket to server. See trace.");
             e.printStackTrace();
         }
-        GlobalFunctions.printError("Aborting");
-        try {
-            stdIn.close(); // TODO delete?
-        } catch (Exception e1) {
-            //ignoring on this stage
-        }
-        System.exit(1);
     }
 
-    public static class ClientSideProtocol {
+    public void start() {
+        if (clientServer != null)
+            clientServer.start();
+        //TODO scheduled update.
+    }
 
-        public static void printUsageMessage() {
-            GlobalFunctions.printInfo("Usage:");
-            GlobalFunctions.printInfo("Type 'connect <host> <port>' to connect to server.'");
-            GlobalFunctions.printInfo("Type 'disconnect' if you want to disconnect from server.");
-            GlobalFunctions.printInfo("Type 'list <dir path>' to ask server to list directory.");
-            GlobalFunctions.printInfo("Type 'get <file path>' to ask server to print file content.");
-            GlobalFunctions.printInfo("Type 'stop' to send to server.'");
-            GlobalFunctions.printInfo("Type '?' to see this help again.");
+    public void stop() {
+        clientServer.stop();
+        clientServer = null;
+        closeSocket();
+    }
+
+    public ArrayList<ListResponseEntry> list() throws IOException { //TODO return this list
+        out.writeByte(1);
+        out.flush();
+
+        if (!waitForResponse()) {
+            return null;
         }
 
-        private static void printConnectMessage() {
-            GlobalFunctions.printSuccess("You are now connected to server <" + host + ":" + port + ">");
+        ArrayList<ListResponseEntry> ans = new ArrayList<>();
+
+        int count = in.readInt();
+        for (int i = 0; i < count; i++) {
+            int id      = in.readInt();
+            String name = in.readUTF();
+            long size   = in.readLong();
+
+            ans.add(new ListResponseEntry(id, name, size));
         }
 
-        private static void printDisconnectMessage() {
-            GlobalFunctions.printSuccess("You are disconnected from server <" + host + ":" + port + ">");
+        return ans;
+    }
+
+    // returns -1 if error occurs
+    public int upload(String filePath) throws IOException {
+        out.writeByte(2);
+        out.writeUTF(getFileName(filePath));
+
+        if (!waitForResponse()) {
+            return -1;
         }
 
-        private static void process(String userInput, DataInputStream in, PrintWriter out) throws IOException {
-            String tokens[] = userInput.split(" ");
-            if (tokens.length > 0) {
-                switch (tokens[0]) {
-                    case ("connect"):
-                        handleConnectInput(tokens);
-                        break;
-                    case ("disconnect"):
-                        handleDisconnectInput();
-                        break;
-                    case ("list"):
-                        handleListInput(tokens, in, out);
-                        break;
-                    case ("get"):
-                        handleGetInput(tokens, in, out);
-                        break;
-                    case ("stop"):
-                        handleStopInput(out);
-                    case ("?"):
-                        handleHelpInput();
-                        break;
-                    default:
-                        handleUnknownInput();
-                }
+        return in.readInt();
+    }
+
+    public ArrayList<SourceResponseEntry> source(int id) throws IOException { //TODO return this list
+        out.writeByte(3);
+        out.writeInt(id);
+
+        if (!waitForResponse()) {
+            return null;
+        }
+
+        ArrayList<SourceResponseEntry> ans = new ArrayList<>();
+
+        int size = in.readInt();
+        for (int i = 0; i < size; i++) {
+            byte ip[] = new byte[4];
+            if (in.read(ip) != 4) {
+                throw new IOException("incorrect ip received from server");
             }
+            short port = in.readShort();
+            ans.add(new SourceResponseEntry(ip, port));
         }
 
-        private static void handleConnectInput(String tokens[]) {
-            if (isConnected) {
-                GlobalFunctions.printWarning("You are already connected to server. You need to disconnect firstly.");
+        return ans;
+    }
+
+    private void update() throws IOException {
+        out.writeByte(4);
+
+    }
+
+    private boolean waitForResponse() throws IOException {
+        try {
+            int time_out = 1000;
+            while (in.available() == 0 && time_out != 0) {
+                sleep(1);
+                time_out--;
+            }
+            if (time_out == 0) {
+                GlobalFunctions.printWarning("Server did not respond properly in 1 second.");
+                GlobalFunctions.printWarning("It's not safe to use it anymore.");
+                return false;
             } else {
-                if (tokens.length == 3 && GlobalFunctions.isPort(tokens[2])) {
-                    setHostAndPort(tokens[1], Integer.parseInt(tokens[2]));// NumberFormatException cannot occur here
-                    connect();
-                } else {
-                    incorrectInput("connect");
-                }
+                return true;
             }
+        } catch (InterruptedException e) {
+            GlobalFunctions.printError("Error while waiting for response. See trace.");
+            e.printStackTrace();
+            return false;
         }
+    }
 
-        private static void handleDisconnectInput() {
-            if (isConnected) {
-                disconnect();
-            } else {
-                GlobalFunctions.printWarning("You are not connected to any server yet.");
-            }
+    private void printListEntry(int id, String name, long size) {
+        GlobalFunctions.printlnNormal("file id: " + id);
+        GlobalFunctions.printlnNormal("file name: " + name);
+        GlobalFunctions.printlnNormal("file size: " + size);
+        GlobalFunctions.printlnNormal("");
+    }
+
+    private String getFileName(String filePath) {
+        String parts[] = filePath.split("/");
+        return parts[parts.length - 1];
+    }
+
+    private void closeSocket() {
+        try {
+            if (socket != null)
+                socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+    }
 
-        private static void handleListInput(String tokens[], DataInputStream in, PrintWriter out) throws IOException {
-            if (tokens.length != 2) {
-                incorrectInput("list");
-            } else {
-                out.println("list " + tokens[1]);
+    public static class ListResponseEntry {
+        public int id;
+        public String name;
+        public long size;
 
-                StringBuilder response = new StringBuilder();
-                String toAppend;
-
-                long size = in.readLong();
-                toAppend = GlobalFunctions.BLUE + Long.toString(size) + GlobalFunctions.RESET + "\n";
-                response.append(toAppend);
-
-                for (int i = 0; i < size; i++) {
-                    if (i != size - 1) {
-                        toAppend = showFileInfo(in.readUTF(), in.readBoolean()) + "\n";
-                    } else {
-                        toAppend = showFileInfo(in.readUTF(), in.readBoolean());
-                    }
-
-                    response.append(toAppend);
-                }
-
-                GlobalFunctions.printSuccess("Response for 'list':");
-                GlobalFunctions.printlnNormal(response.toString());
-            }
+        public ListResponseEntry(int id, String name, long size) {
+            this.id   = id;
+            this.name = name;
+            this.size = size;
         }
+    }
 
-        private static void handleGetInput(String tokens[], DataInputStream in, PrintWriter out) throws IOException {
-            if (tokens.length != 2) {
-                incorrectInput("get");
-            } else {
-                out.println("get " + tokens[1]);
+    public static class SourceResponseEntry {
+        public byte ip[];
+        public short port;
 
-                long size = in.readLong();
-                GlobalFunctions.printSuccess("Response for 'get':");
-                GlobalFunctions.printInfo("file size: " + Long.toString(size));
-
-                byte[] ioBuf  = new byte[BUFFER_SIZE];
-                for (int i = 0; i < size / BUFFER_SIZE; i++) {
-                    in.read(ioBuf, 0, BUFFER_SIZE);
-                    String newString = new String(ioBuf);
-                    GlobalFunctions.printNormal(newString);
-                }
-
-                ioBuf = new byte[(int)(size % BUFFER_SIZE)];
-                in.read(ioBuf, 0, (int)(size % BUFFER_SIZE));
-                String newString = new String(ioBuf);
-                GlobalFunctions.printlnNormal(newString);
-            }
-        }
-
-        private static void handleStopInput(PrintWriter out) throws IOException {
-            out.println("stop");
-            handleDisconnectInput();
-        }
-
-        private static void handleHelpInput() {
-            printUsageMessage();
-        }
-
-        private static void handleUnknownInput() {
-            GlobalFunctions.printWarning("Unknown command. Type '?' to see usage.");
-        }
-
-        private static void incorrectInput(String whichInput) {
-            GlobalFunctions.printWarning("Incorrect form of '" + whichInput + "' query.");
-            GlobalFunctions.printWarning("Type '?' to get help.");
-        }
-
-        private static String showFileInfo(String name, Boolean isDir) {
-            return  "name: " + GlobalFunctions.GREEN + name + GlobalFunctions.RESET +
-                    ", isDir: " + GlobalFunctions.YELLOW + isDir + GlobalFunctions.RESET;
+        public SourceResponseEntry(byte ip[], short port) {
+            this.ip   = ip;
+            this.port = port;
         }
     }
 }

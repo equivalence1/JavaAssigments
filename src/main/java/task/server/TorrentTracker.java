@@ -123,6 +123,10 @@ public class TorrentTracker {
     }
 
     public void handleListQuery(DataOutputStream out) throws IOException {
+        if (state != ServerStates.RUNNING) {
+            return;
+        }
+
         filesLock.readLock().lock();
 
         try {
@@ -132,12 +136,17 @@ public class TorrentTracker {
                 out.writeUTF(fileInfo.name);
                 out.writeLong(fileInfo.size);
             }
+            out.flush();
         } finally {
             filesLock.readLock().unlock();
         }
     }
 
     public void handleUploadQuery(ClientInfo clientInfo, DataInputStream in, DataOutputStream out) throws IOException {
+        if (state != ServerStates.RUNNING) {
+            return;
+        }
+
         FileInfo file = new FileInfo();
         file.id = curId++;
         file.name = in.readUTF();
@@ -151,9 +160,14 @@ public class TorrentTracker {
         filesLock.writeLock().unlock();
 
         out.writeInt(file.id);
+        out.flush();
     }
 
     public void handleSourcesQuery(DataInputStream in, DataOutputStream out) throws IOException {
+        if (state != ServerStates.RUNNING) {
+            return;
+        }
+
         int fileId = in.readInt();
 
         filesLock.readLock().lock();
@@ -168,6 +182,7 @@ public class TorrentTracker {
                     out.write(clientInfo.socket.getInetAddress().getAddress());
                     out.writeShort(clientInfo.socket.getPort());
                 }
+                out.flush();
             } finally {
                 fileInfo.clientsLock.readLock().unlock();
             }
@@ -175,6 +190,10 @@ public class TorrentTracker {
     }
 
     public void handleUpdateQuery(ClientInfo clientInfo, DataInputStream in, DataOutputStream out) throws IOException {
+        if (state != ServerStates.RUNNING) {
+            return;
+        }
+
         try {
             short port = in.readShort();
             int count  = in.readInt();
@@ -193,6 +212,7 @@ public class TorrentTracker {
             }
 
             out.writeBoolean(true);
+            out.flush();
         } catch (Exception e) {
             /**
              * note that if some exception occurred and we send `false`
@@ -202,6 +222,7 @@ public class TorrentTracker {
              * suppose that he doesn't have any files at all.
              */
             out.writeBoolean(false);
+            out.flush();
             throw e;
         }
     }

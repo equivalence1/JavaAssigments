@@ -1,5 +1,7 @@
 package task.server;
 
+import task.GlobalFunctions;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
@@ -47,6 +49,7 @@ class ClientListener implements Runnable {
                     break;
             }
         } catch (Exception e) {
+            GlobalFunctions.printError("Exception occurred. See trace.");
             e.printStackTrace();
         } finally {
             disconnect();
@@ -102,19 +105,13 @@ class ClientListener implements Runnable {
     }
 
     private void disconnect() {
-        closeStreams();
+        closeSocket();
     }
 
-    private void closeStreams() {
+    private void closeSocket() {
         try {
-            if (in != null)
-                in.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        try {
-            if (out != null)
-                out.close();
+            if (socket != null)
+                socket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
