@@ -17,6 +17,20 @@ import java.util.List;
 public class FSHandler {
     private static final int BUFFER_SIZE = 1000000;
 
+    public static boolean doesExist(String path) {
+        File f = new File(path);
+        return (f.exists() && !f.isDirectory());
+    }
+
+    public static long getSize(String path) {
+        if (!doesExist(path)) {
+            return 0;
+        } else {
+            File f = new File(path);
+            return f.length();
+        }
+    }
+
     public static void handleList(String path, DataOutputStream out) {
         Path dir;
         try {
@@ -30,7 +44,7 @@ public class FSHandler {
             return;
         }
 
-        List<String> names = new ArrayList<>();
+        List<String> names  = new ArrayList<>();
         List<Boolean> isDir = new ArrayList<>();
 
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {

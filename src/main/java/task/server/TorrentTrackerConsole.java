@@ -30,7 +30,7 @@ public class TorrentTrackerConsole {
                 case "stop":
                     server.stop();
                     GlobalFunctions.printSuccess("server was stopped");
-                    break;
+                    System.exit(0);
                 default:
                     printHelp();
             }

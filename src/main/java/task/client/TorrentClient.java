@@ -6,7 +6,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.util.ArrayList;
+import java.nio.file.NoSuchFileException;
+import java.util.*;
+import java.util.concurrent.TimeoutException;
 
 import static java.lang.Thread.sleep;
 
@@ -16,6 +18,8 @@ import static java.lang.Thread.sleep;
  * @author Kravchenko Dima
  */
 public class TorrentClient {
+    private static final int UPDATE_TL = 5 * 60; // 5 min
+    private static final long PART_SIZE = 10 * 1024 * 1024; // 10M
     private int port;
     private TorrentClientServer clientServer;
     private Socket socket;
@@ -23,9 +27,30 @@ public class TorrentClient {
     private DataInputStream in;
     private DataOutputStream out;
 
+    private List<FileInfo> files;
+
+    private Timer updateTimer = new Timer();
+    private TimerTask updateTask;
+
     public TorrentClient(int port) {
         this.port = port;
-        clientServer = new TorrentClientServer(port);
+        clientServer = new TorrentClientServer(port, files);
+
+        updateTask = new TimerTask() {
+            @Override
+            public void run() {
+                update();
+            }
+        };
+
+        files = new LinkedList<>();
+    }
+
+    public void start() {
+        if (hasSavedState())
+            restoreState();
+        if (clientServer != null)
+            clientServer.start();
 
         try {
             socket = new Socket("localhost", 8081);
@@ -35,26 +60,24 @@ public class TorrentClient {
             GlobalFunctions.printError("could not create socket to server. See trace.");
             e.printStackTrace();
         }
-    }
 
-    public void start() {
-        if (clientServer != null)
-            clientServer.start();
-        //TODO scheduled update.
+        updateTimer.schedule(updateTask, 0, UPDATE_TL / 2 * 1000); // millis
     }
 
     public void stop() {
         clientServer.stop();
-        clientServer = null;
+        clientServer = null; //TODO really?
         closeSocket();
+        updateTimer.cancel();
+        saveState();
     }
 
-    public ArrayList<ListResponseEntry> list() throws IOException { //TODO return this list
+    public ArrayList<ListResponseEntry> list() throws IOException, TimeoutException {
         out.writeByte(1);
         out.flush();
 
         if (!waitForResponse()) {
-            return null;
+            throw new TimeoutException("list -- no response from server in 1 second.");
         }
 
         ArrayList<ListResponseEntry> ans = new ArrayList<>();
@@ -72,23 +95,33 @@ public class TorrentClient {
     }
 
     // returns -1 if error occurs
-    public int upload(String filePath) throws IOException {
-        out.writeByte(2);
-        out.writeUTF(getFileName(filePath));
-
-        if (!waitForResponse()) {
-            return -1;
+    public int upload(String filePath) throws IOException, NoSuchFileException, TimeoutException {
+        if (!FSHandler.doesExist(filePath)) {
+            throw new NoSuchFileException("file '" + filePath + "' does not exist");
         }
 
-        return in.readInt();
+        long size = FSHandler.getSize(filePath);
+
+        out.writeByte(2);
+        out.writeUTF(getFileName(filePath));
+        out.writeLong(size);
+
+        if (!waitForResponse()) {
+            throw new TimeoutException("upload -- no response from server in 1 second.");
+        }
+
+        int id = in.readInt();
+        addFile(id, filePath, size);
+
+        return id;
     }
 
-    public ArrayList<SourceResponseEntry> source(int id) throws IOException { //TODO return this list
+    public ArrayList<SourceResponseEntry> source(int id) throws IOException, TimeoutException {
         out.writeByte(3);
         out.writeInt(id);
 
         if (!waitForResponse()) {
-            return null;
+            throw new IOException("source -- no response from server in 1 second.");
         }
 
         ArrayList<SourceResponseEntry> ans = new ArrayList<>();
@@ -97,7 +130,7 @@ public class TorrentClient {
         for (int i = 0; i < size; i++) {
             byte ip[] = new byte[4];
             if (in.read(ip) != 4) {
-                throw new IOException("incorrect ip received from server");
+                throw new TimeoutException("incorrect ip received from server");
             }
             short port = in.readShort();
             ans.add(new SourceResponseEntry(ip, port));
@@ -106,25 +139,38 @@ public class TorrentClient {
         return ans;
     }
 
-    private void update() throws IOException {
-        out.writeByte(4);
+    public boolean update() {
+        try {
+            out.writeByte(4);
+            out.writeShort(port);
+            out.writeInt(files.size());
 
+            for (FileInfo file : files) {
+                out.writeInt(file.id);
+            }
+
+            if (!waitForResponse()) {
+                GlobalFunctions.printWarning("update -- no response from server in 1 second.");
+                return false;
+            }
+
+            return in.readBoolean();
+        } catch (IOException e) {
+            GlobalFunctions.printWarning("Could not sent `update` query. See trace.");
+            e.printStackTrace();
+            return false;
+        }
     }
 
+    //waiting 1 sec
     private boolean waitForResponse() throws IOException {
         try {
-            int time_out = 1000;
+            int time_out = 100;
             while (in.available() == 0 && time_out != 0) {
-                sleep(1);
+                sleep(10);
                 time_out--;
             }
-            if (time_out == 0) {
-                GlobalFunctions.printWarning("Server did not respond properly in 1 second.");
-                GlobalFunctions.printWarning("It's not safe to use it anymore.");
-                return false;
-            } else {
-                return true;
-            }
+            return time_out != 0;
         } catch (InterruptedException e) {
             GlobalFunctions.printError("Error while waiting for response. See trace.");
             e.printStackTrace();
@@ -132,11 +178,23 @@ public class TorrentClient {
         }
     }
 
-    private void printListEntry(int id, String name, long size) {
-        GlobalFunctions.printlnNormal("file id: " + id);
-        GlobalFunctions.printlnNormal("file name: " + name);
-        GlobalFunctions.printlnNormal("file size: " + size);
-        GlobalFunctions.printlnNormal("");
+    private void addFile(int id, String filePath, long size) {
+        FileInfo file = new FileInfo(id, filePath, size);
+        for (int i = 0; i < (size + PART_SIZE - 1) / PART_SIZE; i++) {
+            file.parts.add(i);
+        }
+    }
+
+    private boolean hasSavedState() {
+        return false;
+    }
+
+    private void restoreState() {
+
+    }
+
+    private void saveState() {
+
     }
 
     private String getFileName(String filePath) {

@@ -140,6 +140,8 @@ public class TorrentTracker {
         } finally {
             filesLock.readLock().unlock();
         }
+
+        GlobalFunctions.printInfo("List query handled");
     }
 
     public void handleUploadQuery(ClientInfo clientInfo, DataInputStream in, DataOutputStream out) throws IOException {
@@ -161,6 +163,8 @@ public class TorrentTracker {
 
         out.writeInt(file.id);
         out.flush();
+
+        GlobalFunctions.printInfo("Upload query handled");
     }
 
     public void handleSourcesQuery(DataInputStream in, DataOutputStream out) throws IOException {
@@ -180,13 +184,18 @@ public class TorrentTracker {
                 out.writeInt(fileInfo.activeClientInfos.size());
                 for (ClientInfo clientInfo : fileInfo.activeClientInfos) {
                     out.write(clientInfo.socket.getInetAddress().getAddress());
-                    out.writeShort(clientInfo.socket.getPort());
+                    out.writeShort(clientInfo.port);
                 }
                 out.flush();
             } finally {
                 fileInfo.clientsLock.readLock().unlock();
             }
+        } else {
+            out.writeInt(0);
+            out.flush();
         }
+
+        GlobalFunctions.printInfo("Source query handled");
     }
 
     public void handleUpdateQuery(ClientInfo clientInfo, DataInputStream in, DataOutputStream out) throws IOException {
@@ -225,6 +234,8 @@ public class TorrentTracker {
             out.flush();
             throw e;
         }
+
+        GlobalFunctions.printInfo("Update query handled");
     }
 
     enum ServerStates {

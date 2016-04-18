@@ -105,6 +105,8 @@ class ClientListener implements Runnable {
     }
 
     private void disconnect() {
+        GlobalFunctions.printInfo("client <" + socket.getInetAddress().getHostAddress() +
+                ":" + socket.getPort() + "> disconnected");
         closeSocket();
     }
 

@@ -3,7 +3,9 @@ package task.client;
 import task.GlobalFunctions;
 
 import java.io.*;
-import java.net.Socket;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Created by equi on 14.03.16.
@@ -11,62 +13,37 @@ import java.net.Socket;
  * @author Kravchenko Dima
  */
 public class TorrentClientConsole {
-    private static String host;
     private static int port;
+    private static boolean wasStopped;
     private static BufferedReader stdIn;
-    private static boolean isConnected = false;
-    private static final int BUFFER_SIZE = 1000000;
+    private static TorrentClient torrentClient;
 
     public static void main(String args[]) {
         stdIn = new BufferedReader(new InputStreamReader(System.in));
-        TorrentClient.ClientSideProtocol.printUsageMessage();
+        ClientSideProtocol.printUsageMessage();
+
+        wasStopped = false;
+
+        try {
+            port = Integer.parseInt(args[0]);
+        } catch (Exception e) {
+            GlobalFunctions.printError("First argument should be a port number.");
+            System.exit(1);
+        }
+
+        torrentClient = new TorrentClient(port);
 
         try {
             interactGlobal();
-            stdIn.close(); // TODO delete?
         } catch (Exception e) {
-            endWithError("Error occurred during session. See trace", e);
+            endWithError("Error occurred during session. See trace.", e);
         }
     }
 
-    private static void setHostAndPort(String host, int port) {
-        TorrentClient.host = host;
-        TorrentClient.port = port;
-    }
-
-    private static void connect() {
-        try (
-                Socket socket = new Socket(host, port);
-                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                DataInputStream in = new DataInputStream(socket.getInputStream())
-        ) {
-            isConnected = true;
-            TorrentClient.ClientSideProtocol.printConnectMessage();
-            interactInsideConnection(in, out);
-        } catch (Exception e) {
-            endWithError("Error occurred during session. See trace", e);
-        }
-    }
-
-    private static void disconnect() {
-        isConnected = false; // TODO add this option to server
-        TorrentClient.ClientSideProtocol.printDisconnectMessage();
-    }
-
-    private static void interactGlobal() throws IOException {
+    private static void interactGlobal() throws IOException, TimeoutException {
         String userInput;
-        while ((userInput = stdIn.readLine()) != null) {
-            TorrentClient.ClientSideProtocol.process(userInput, null, null);
-        }
-    }
-
-    private static void interactInsideConnection(DataInputStream in, PrintWriter out)
-            throws IOException {
-        String userInput;
-        while ((userInput = stdIn.readLine()) != null) {
-            TorrentClient.ClientSideProtocol.process(userInput, in, out);
-            if (!isConnected)
-                return;
+        while ((userInput = stdIn.readLine()) != null && !wasStopped) {
+            ClientSideProtocol.process(userInput);
         }
     }
 
@@ -76,54 +53,49 @@ public class TorrentClientConsole {
             e.printStackTrace();
         }
         GlobalFunctions.printError("Aborting");
-        try {
-            stdIn.close(); // TODO delete?
-        } catch (Exception e1) {
-            //ignoring on this stage
-        }
         System.exit(1);
     }
 
-    public static class ClientSideProtocol {
+    private static class ClientSideProtocol {
 
-        public static void printUsageMessage() {
+        private static void printUsageMessage() {
             GlobalFunctions.printInfo("Usage:");
+            GlobalFunctions.printInfo("First argument should be a port number of client server.'");
             GlobalFunctions.printInfo("Type 'connect <host> <port>' to connect to server.'");
             GlobalFunctions.printInfo("Type 'disconnect' if you want to disconnect from server.");
             GlobalFunctions.printInfo("Type 'list' to get list of file's ids on server.");
             GlobalFunctions.printInfo("Type 'upload <path_to_file>' to upload file on server.");
             GlobalFunctions.printInfo("Type 'Sources <file id>' to get list of seeds for this file.");
             GlobalFunctions.printInfo("Type '?' to see this help again.");
-            GlobalFunctions.printInfo("node that also every 5 minutes we send `update` request to server " +
+            GlobalFunctions.printInfo("Node that also every 5 minutes we send `update` request to server " +
                     "automatically");
         }
 
-        private static void printConnectMessage() {
-            GlobalFunctions.printSuccess("You are now connected to server <" + host + ":" + port + ">");
-        }
-
-        private static void printDisconnectMessage() {
-            GlobalFunctions.printSuccess("You are disconnected from server <" + host + ":" + port + ">");
-        }
-
-        private static void process(String userInput, DataInputStream in, PrintWriter out) throws IOException {
+        private static void process(String userInput) throws IOException, TimeoutException {
             String tokens[] = userInput.split(" ");
             if (tokens.length > 0) {
                 switch (tokens[0]) {
-                    case ("connect"):
-                        handleConnectInput(tokens);
-                        break;
-                    case ("disconnect"):
-                        handleDisconnectInput();
-                        break;
-                    case ("list"):
-                        handleListInput(in, out);
-                        break;
-                    case ("get"):
-                        handleGetInput(tokens, in, out);
+                    case ("start"):
+                        handleStartInput();
                         break;
                     case ("stop"):
-                        handleStopInput(out);
+                        handleStopInput();
+                        break;
+                    case ("list"):
+                        handleListInput();
+                        break;
+                    case ("upload"):
+                        handleUploadInput(tokens);
+                        break;
+                    case ("source"):
+                        handleSourceInput(tokens);
+                        break;
+                    case ("update"):
+                        handleUpdateInput();
+                        break;
+                    case ("get"):
+                        //handleGetInput(tokens, in, out);
+                        break;
                     case ("?"):
                         handleHelpInput();
                         break;
@@ -133,58 +105,73 @@ public class TorrentClientConsole {
             }
         }
 
-        private static void handleConnectInput(String tokens[]) {
-            if (isConnected) {
-                GlobalFunctions.printWarning("You are already connected to server. You need to disconnect firstly.");
-            } else {
-                if (tokens.length == 3 && GlobalFunctions.isPort(tokens[2])) {
-                    setHostAndPort(tokens[1], Integer.parseInt(tokens[2]));// NumberFormatException cannot occur here
-                    connect();
-                } else {
-                    incorrectInput("connect");
-                }
-            }
+        private static void handleStartInput() {
+            torrentClient.start();
+            GlobalFunctions.printSuccess("Client started and you are connected to server");
         }
 
-        private static void handleDisconnectInput() {
-            if (isConnected) {
-                disconnect();
-            } else {
-                GlobalFunctions.printWarning("You are not connected to any server yet.");
-            }
+        private static void handleStopInput() throws IOException {
+            torrentClient.stop();
+            GlobalFunctions.printInfo("Good buy.");
+            wasStopped = true;
         }
 
-        private static void handleListInput(String tokens[], DataInputStream in, PrintWriter out) throws IOException {
-
+        private static void handleListInput() throws IOException, TimeoutException {
+            ArrayList<TorrentClient.ListResponseEntry> files = torrentClient.list();
+            GlobalFunctions.printlnNormal("" + files.size());
+            files.forEach(ClientSideProtocol::printListEntry);
         }
 
-        private static void handleGetInput(String tokens[], DataInputStream in, PrintWriter out) throws IOException {
+        private static void printListEntry(TorrentClient.ListResponseEntry file) {
+            GlobalFunctions.printlnNormal("file id: " + file.id);
+            GlobalFunctions.printlnNormal("file name: " + file.name);
+            GlobalFunctions.printlnNormal("file size: " + file.size);
+            GlobalFunctions.printlnNormal("");
+        }
+
+        private static void handleUploadInput(String tokens[]) throws IOException, TimeoutException {
             if (tokens.length != 2) {
-                incorrectInput("get");
-            } else {
-                out.println("get " + tokens[1]);
+                incorrectInput("upload");
+                return;
+            }
 
-                long size = in.readLong();
-                GlobalFunctions.printSuccess("Response for 'get':");
-                GlobalFunctions.printInfo("file size: " + Long.toString(size));
-
-                byte[] ioBuf  = new byte[BUFFER_SIZE];
-                for (int i = 0; i < size / BUFFER_SIZE; i++) {
-                    in.read(ioBuf, 0, BUFFER_SIZE);
-                    String newString = new String(ioBuf);
-                    GlobalFunctions.printNormal(newString);
-                }
-
-                ioBuf = new byte[(int)(size % BUFFER_SIZE)];
-                in.read(ioBuf, 0, (int)(size % BUFFER_SIZE));
-                String newString = new String(ioBuf);
-                GlobalFunctions.printlnNormal(newString);
+            try {
+                int id = torrentClient.upload(tokens[1]);
+                GlobalFunctions.printlnNormal("id for file '" + tokens[1] + "' is " + id);
+            } catch (NoSuchFileException e) {
+                GlobalFunctions.printWarning("file '" + tokens[1] + "' does not exist.");
             }
         }
 
-        private static void handleStopInput(PrintWriter out) throws IOException {
-            out.println("stop");
-            handleDisconnectInput();
+        private static void handleSourceInput(String tokens[]) throws IOException, TimeoutException {
+            if (tokens.length != 2) {
+                incorrectInput("source");
+                return;
+            }
+
+            try {
+                int id = Integer.parseInt(tokens[1]);
+                ArrayList<TorrentClient.SourceResponseEntry> sources = torrentClient.source(id);
+                GlobalFunctions.printlnNormal(sources.size() + "");
+                sources.forEach(ClientSideProtocol::printSourceEntry);
+            } catch (NumberFormatException e) {
+                GlobalFunctions.printWarning(tokens[1] + " is not an integer.");
+            }
+        }
+
+        private static void printSourceEntry(TorrentClient.SourceResponseEntry source) {
+            GlobalFunctions.printNormal("<");
+            for (int i = 0; i < 4; i++) {
+                if (i != 3)
+                    GlobalFunctions.printNormal(source.ip[i] + ".");
+                else
+                    GlobalFunctions.printNormal(source.ip[i] + ":");
+            }
+            GlobalFunctions.printlnNormal(source.port + ">");
+        }
+
+        private static void handleUpdateInput() {
+            torrentClient.update();
         }
 
         private static void handleHelpInput() {
@@ -198,11 +185,6 @@ public class TorrentClientConsole {
         private static void incorrectInput(String whichInput) {
             GlobalFunctions.printWarning("Incorrect form of '" + whichInput + "' query.");
             GlobalFunctions.printWarning("Type '?' to get help.");
-        }
-
-        private static String showFileInfo(String name, Boolean isDir) {
-            return  "name: " + GlobalFunctions.GREEN + name + GlobalFunctions.RESET +
-                    ", isDir: " + GlobalFunctions.YELLOW + isDir + GlobalFunctions.RESET;
         }
     }
 }
