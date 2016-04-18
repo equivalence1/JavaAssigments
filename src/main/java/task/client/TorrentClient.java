@@ -2,9 +2,7 @@ package task.client;
 
 import task.GlobalFunctions;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
 import java.nio.file.NoSuchFileException;
 import java.util.*;
@@ -27,13 +25,14 @@ public class TorrentClient {
     private DataInputStream in;
     private DataOutputStream out;
 
-    private List<FileInfo> files;
+    private Map<Integer, FileInfo> files;
 
     private Timer updateTimer = new Timer();
     private TimerTask updateTask;
 
     public TorrentClient(int port) {
         this.port = port;
+        files = new HashMap<>();
         clientServer = new TorrentClientServer(port, files);
 
         updateTask = new TimerTask() {
@@ -42,8 +41,6 @@ public class TorrentClient {
                 update();
             }
         };
-
-        files = new LinkedList<>();
     }
 
     public void start() {
@@ -66,7 +63,7 @@ public class TorrentClient {
 
     public void stop() {
         clientServer.stop();
-        clientServer = null; //TODO really?
+        clientServer = null;
         closeSocket();
         updateTimer.cancel();
         saveState();
@@ -95,7 +92,7 @@ public class TorrentClient {
     }
 
     // returns -1 if error occurs
-    public int upload(String filePath) throws IOException, NoSuchFileException, TimeoutException {
+    public int upload(String filePath) throws IOException, TimeoutException {
         if (!FSHandler.doesExist(filePath)) {
             throw new NoSuchFileException("file '" + filePath + "' does not exist");
         }
@@ -103,8 +100,9 @@ public class TorrentClient {
         long size = FSHandler.getSize(filePath);
 
         out.writeByte(2);
-        out.writeUTF(getFileName(filePath));
+        out.writeUTF(FSHandler.getFileName(filePath));
         out.writeLong(size);
+        out.flush();
 
         if (!waitForResponse()) {
             throw new TimeoutException("upload -- no response from server in 1 second.");
@@ -119,9 +117,10 @@ public class TorrentClient {
     public ArrayList<SourceResponseEntry> source(int id) throws IOException, TimeoutException {
         out.writeByte(3);
         out.writeInt(id);
+        out.flush();
 
         if (!waitForResponse()) {
-            throw new IOException("source -- no response from server in 1 second.");
+            throw new TimeoutException("source -- no response from server in 1 second.");
         }
 
         ArrayList<SourceResponseEntry> ans = new ArrayList<>();
@@ -130,7 +129,7 @@ public class TorrentClient {
         for (int i = 0; i < size; i++) {
             byte ip[] = new byte[4];
             if (in.read(ip) != 4) {
-                throw new TimeoutException("incorrect ip received from server");
+                throw new IOException("incorrect ip received from server");
             }
             short port = in.readShort();
             ans.add(new SourceResponseEntry(ip, port));
@@ -145,9 +144,10 @@ public class TorrentClient {
             out.writeShort(port);
             out.writeInt(files.size());
 
-            for (FileInfo file : files) {
+            for (FileInfo file : files.values()) {
                 out.writeInt(file.id);
             }
+            out.flush();
 
             if (!waitForResponse()) {
                 GlobalFunctions.printWarning("update -- no response from server in 1 second.");
@@ -162,8 +162,78 @@ public class TorrentClient {
         }
     }
 
+    public ArrayList<Integer> stat(String ip, Short port, int id) throws IOException, TimeoutException {
+        try (
+                Socket socket = new Socket(ip, port);
+                DataInputStream in = new DataInputStream(socket.getInputStream());
+                DataOutputStream out = new DataOutputStream(socket.getOutputStream())
+        ) {
+            out.writeByte(1);
+            out.writeInt(id);
+            out.flush();
+
+            if (!waitForResponse(in)) {
+                throw new TimeoutException("stat -- no response from server in 1 second.");
+            }
+
+            ArrayList<Integer> res = new ArrayList<>();
+            int count = in.readInt();
+            for (int i = 0; i < count; i++) {
+                res.add(in.readInt());
+            }
+
+            return res;
+        }
+    }
+
+    public void get(String ip, Short port, int id, int part) throws IOException, TimeoutException {
+        try (
+                Socket socket = new Socket(ip, port);
+                DataInputStream in = new DataInputStream(socket.getInputStream());
+                DataOutputStream out = new DataOutputStream(socket.getOutputStream())
+        ) {
+            out.writeByte(2);
+            out.writeInt(id);
+            out.writeInt(part);
+            out.flush();
+
+            if (!waitForResponse(in)) {
+                throw new TimeoutException("get -- no response from server in 1 second.");
+            }
+
+            long fileSize = getFileSize(id);
+            File file = new File("FileId" + id + ".tor");
+            RandomAccessFile rafile = new RandomAccessFile("FileId" + id + ".tor", "rw");
+            if (!file.exists()) {
+                rafile.setLength(fileSize);
+            }
+            FSHandler.writeToFile(in, rafile, part * PART_SIZE);
+
+            if (files.get(id) == null) {
+                FileInfo fileInfo = new FileInfo(id, "FileId" + id + ".tor", file.getAbsolutePath(), fileSize);
+                fileInfo.parts.add(part);
+                files.put(id, fileInfo);
+            } else {
+                files.get(id).parts.add(part);
+            }
+
+            GlobalFunctions.printlnNormal("part written to " + file.getName());
+            update();
+        }
+    }
+
+    private long getFileSize(int id) throws IOException, TimeoutException {
+        ArrayList<ListResponseEntry> list = list();
+        for (ListResponseEntry entry : list) {
+            if (entry.id == id)
+                return entry.size;
+        }
+
+        return -1;
+    }
+
     //waiting 1 sec
-    private boolean waitForResponse() throws IOException {
+    private boolean waitForResponse(DataInputStream in) throws IOException {
         try {
             int time_out = 100;
             while (in.available() == 0 && time_out != 0) {
@@ -178,11 +248,18 @@ public class TorrentClient {
         }
     }
 
+    //waiting 1 sec
+    private boolean waitForResponse() throws IOException {
+        return waitForResponse(in);
+    }
+
     private void addFile(int id, String filePath, long size) {
-        FileInfo file = new FileInfo(id, filePath, size);
+        FileInfo file = new FileInfo(id, FSHandler.getFileName(filePath), filePath, size);
         for (int i = 0; i < (size + PART_SIZE - 1) / PART_SIZE; i++) {
             file.parts.add(i);
         }
+        GlobalFunctions.printSuccess("added " + id + " " + file.parts.size());
+        files.put(id, file);
     }
 
     private boolean hasSavedState() {
@@ -195,11 +272,6 @@ public class TorrentClient {
 
     private void saveState() {
 
-    }
-
-    private String getFileName(String filePath) {
-        String parts[] = filePath.split("/");
-        return parts[parts.length - 1];
     }
 
     private void closeSocket() {

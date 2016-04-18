@@ -1,11 +1,7 @@
 package task.client;
 
-import task.GlobalFunctions;
-
 import java.io.*;
 import java.nio.file.*;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Created by equi on 14.03.16.
@@ -31,52 +27,13 @@ public class FSHandler {
         }
     }
 
-    public static void handleList(String path, DataOutputStream out) {
-        Path dir;
-        try {
-            dir = FileSystems.getDefault().getPath(path);
-        } catch (InvalidPathException e) {
-            try {
-                out.writeLong(0);
-            } catch (IOException ioe) {
-                ioe.printStackTrace();
-            }
-            return;
-        }
-
-        List<String> names  = new ArrayList<>();
-        List<Boolean> isDir = new ArrayList<>();
-
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path filePath: stream) {
-                File file = filePath.toFile();
-
-                names.add(file.getName());
-                isDir.add(file.isDirectory());
-            }
-        } catch (IOException | DirectoryIteratorException x) {
-            GlobalFunctions.printError("Error while listing directory");
-            try {
-                out.writeLong(0);
-            } catch (IOException ioe) {
-                ioe.printStackTrace();
-            }
-            return;
-        }
-
-        try {
-            out.writeLong(names.size());
-
-            for (int i = 0; i < names.size(); i++) {
-                out.writeUTF(names.get(i));
-                out.writeBoolean(isDir.get(i));
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    public static String getFileName(String filePath) {
+        String parts[] = filePath.split("/");
+        return parts[parts.length - 1];
     }
 
-    public static void handleGet(String path, DataOutputStream out) {
+
+    public static void getFilePart(DataOutputStream out, String path, long skip, long size) throws IOException {
         Path file;
         try {
             file = FileSystems.getDefault().getPath(path);
@@ -91,16 +48,26 @@ public class FSHandler {
 
         try (FileInputStream fis = new FileInputStream(file.toFile());
                 BufferedInputStream in = new BufferedInputStream(fis)) {
-            out.writeLong(file.toFile().getTotalSpace());
+            in.skip(skip);
 
             byte[] ioBuf = new byte[BUFFER_SIZE];
+            long bytesToRead = size;
             int bytesRead;
-            while ((bytesRead = in.read(ioBuf)) != -1){
-                out.write(ioBuf, 0, bytesRead);
+
+            while (bytesToRead != 0 && (bytesRead = in.read(ioBuf)) != -1){
+                out.write(ioBuf, 0, Math.min(bytesRead, bytesRead));
+                bytesToRead -= bytesRead;
             }
-        } catch (IOException | DirectoryIteratorException e) {
-            GlobalFunctions.printError("Error while getting file");
-            e.printStackTrace();
+        }
+    }
+
+    public static void writeToFile(DataInputStream in, RandomAccessFile file, long from) throws IOException {
+        byte[] ioBuf = new byte[BUFFER_SIZE];
+        int bytesRead;
+
+        while ((bytesRead = in.read(ioBuf)) != -1) {
+            file.write(ioBuf, (int)from, bytesRead);
+            from += bytesRead;
         }
     }
 }

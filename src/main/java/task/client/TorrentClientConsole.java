@@ -3,6 +3,7 @@ package task.client;
 import task.GlobalFunctions;
 
 import java.io.*;
+import java.net.Socket;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.concurrent.TimeoutException;
@@ -65,7 +66,9 @@ public class TorrentClientConsole {
             GlobalFunctions.printInfo("Type 'disconnect' if you want to disconnect from server.");
             GlobalFunctions.printInfo("Type 'list' to get list of file's ids on server.");
             GlobalFunctions.printInfo("Type 'upload <path_to_file>' to upload file on server.");
-            GlobalFunctions.printInfo("Type 'Sources <file id>' to get list of seeds for this file.");
+            GlobalFunctions.printInfo("Type 'sources <file id>' to get list of seeds for this file.");
+            GlobalFunctions.printInfo("Type 'stat <ip> <port> <file id>' get info about parts of file client has.");
+            GlobalFunctions.printInfo("Type 'get <ip> <port> <file id> <part>' get part of the file.");
             GlobalFunctions.printInfo("Type '?' to see this help again.");
             GlobalFunctions.printInfo("Node that also every 5 minutes we send `update` request to server " +
                     "automatically");
@@ -93,8 +96,11 @@ public class TorrentClientConsole {
                     case ("update"):
                         handleUpdateInput();
                         break;
+                    case ("stat"):
+                        handleStatInput(tokens);
+                        break;
                     case ("get"):
-                        //handleGetInput(tokens, in, out);
+                        handleGetInput(tokens);
                         break;
                     case ("?"):
                         handleHelpInput();
@@ -168,6 +174,61 @@ public class TorrentClientConsole {
                     GlobalFunctions.printNormal(source.ip[i] + ":");
             }
             GlobalFunctions.printlnNormal(source.port + ">");
+        }
+
+        private static void handleStatInput(String tokens[]) throws IOException {
+            if (tokens.length != 4) {
+                incorrectInput("stat");
+                return;
+            }
+
+            short port;
+            int id;
+
+            try {
+                port = Short.parseShort(tokens[2]);
+                id = Integer.parseInt(tokens[3]);
+            } catch (NumberFormatException e) {
+                incorrectInput("stat");
+                return;
+            }
+
+            try {
+                ArrayList<Integer> parts = torrentClient.stat(tokens[1], port, id);
+                GlobalFunctions.printlnNormal(parts.size() + "");
+                for (Integer part : parts) {
+                    GlobalFunctions.printNormal(part + " ");
+                }
+                GlobalFunctions.printlnNormal("");
+            } catch (TimeoutException e) {
+                GlobalFunctions.printWarning("no response on `stat` query.");
+            }
+        }
+
+        private static void handleGetInput(String tokens[]) throws IOException {
+            if (tokens.length != 5) {
+                incorrectInput("get");
+                return;
+            }
+
+            short port;
+            int id;
+            int part;
+
+            try {
+                port = Short.parseShort(tokens[2]);
+                id = Integer.parseInt(tokens[3]);
+                part = Integer.parseInt(tokens[4]);
+            } catch (NumberFormatException e) {
+                incorrectInput("get");
+                return;
+            }
+
+            try {
+                torrentClient.get(tokens[1], port, id, part);
+            } catch (TimeoutException e) {
+                GlobalFunctions.printWarning("no response on `stat` query.");
+            }
         }
 
         private static void handleUpdateInput() {

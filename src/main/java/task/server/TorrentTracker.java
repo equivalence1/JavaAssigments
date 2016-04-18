@@ -110,7 +110,7 @@ public class TorrentTracker {
     private void acceptNewConnection(ServerSocket serverSocket) {
         try {
             Socket clientSocket = serverSocket.accept();
-            GlobalFunctions.printSuccess("Connection accepted."); // TODO from who?
+            GlobalFunctions.printSuccess("Connection accepted.");
 
             ClientListener listener = new ClientListener(clientSocket, this);
             clientsPool.submit(listener);
@@ -218,6 +218,7 @@ public class TorrentTracker {
 
                 if (fileInfo != null)
                     clientInfo.addFile(fileInfo);
+                fileInfo.addClient(clientInfo);
             }
 
             out.writeBoolean(true);

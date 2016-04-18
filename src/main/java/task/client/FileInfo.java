@@ -9,12 +9,14 @@ import java.util.Set;
 public class FileInfo {
     public int id;
     public String name;
+    public String path;
     public long size;
     public Set<Integer> parts;
 
-    FileInfo(int id, String name, long size) {
+    FileInfo(int id, String name, String path, long size) {
         this.id   = id;
         this.name = name;
+        this.path = path;
         this.size = size;
         parts = new HashSet<>();
     }
