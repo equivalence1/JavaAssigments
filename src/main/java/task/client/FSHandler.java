@@ -65,8 +65,9 @@ public class FSHandler {
         byte[] ioBuf = new byte[BUFFER_SIZE];
         int bytesRead;
 
+        file.seek(from);
         while ((bytesRead = in.read(ioBuf)) != -1) {
-            file.write(ioBuf, (int)from, bytesRead);
+            file.write(ioBuf, 0, bytesRead);
             from += bytesRead;
         }
     }

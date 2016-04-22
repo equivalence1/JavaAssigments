@@ -207,6 +207,7 @@ public class TorrentClient {
             if (!file.exists()) {
                 rafile.setLength(fileSize);
             }
+
             FSHandler.writeToFile(in, rafile, part * PART_SIZE);
 
             if (files.get(id) == null) {

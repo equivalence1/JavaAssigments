@@ -3,7 +3,6 @@ package task.client;
 import task.GlobalFunctions;
 
 import java.io.*;
-import java.net.Socket;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.concurrent.TimeoutException;
