@@ -1,7 +1,6 @@
 package task;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -18,17 +17,17 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @author Kravchenko Dima
  */
 public class TorrentTracker implements Server, TrackerExecutor {
-
     /**
      * I don't need PORT to be public in this implementation.
      * But I think it can be useful if somebody wants to
      * use this server.
      *
-     * The same with state. I could make it package-local
+     * The same with BACKUP_FILE and state. I could make it package-local
      * but I think it can be useful to get status of the
      * server.
      */
     public static final short PORT = 8081;
+    public static final String BACKUP_FILE = "server.bak";
 
     public TrackerStatus status = TrackerStatus.STOPPED;
 
@@ -48,6 +47,11 @@ public class TorrentTracker implements Server, TrackerExecutor {
 
     @Override
     public void start() {
+        if (!restoreState()) {
+            newFileId.set(0);
+            files = new ArrayList<>();
+        }
+
         TrackerRunner trackerRunner = new TrackerRunner();
         Thread trackerThread = new Thread(trackerRunner);
         trackerThread.start();
@@ -64,6 +68,8 @@ public class TorrentTracker implements Server, TrackerExecutor {
             // no need to handle it.
             // we are just shutting down server.
         }
+
+        saveState();
     }
 
     @Override
@@ -149,6 +155,87 @@ public class TorrentTracker implements Server, TrackerExecutor {
         RUNNING, STOPPED
     }
 
+    private void saveState() {
+        try {
+            File backup = new File(BACKUP_FILE);
+            if (backup.exists()) {
+                if (!backup.delete()) {
+                    throw new IOException("could not delete old backup");
+                }
+            }
+            if (!backup.createNewFile()) {
+                throw new IOException("could not create backup file");
+            }
+
+            FileOutputStream fileOutputStream = new FileOutputStream(backup);
+            DataOutputStream out = new DataOutputStream(fileOutputStream);
+
+            /**
+             *
+             * File structure
+             * 1. int -- newFileId value;
+             * 2. int -- files.size
+             * 3. files themselves.
+             *    | int -- id
+             *    | String -- name
+             *    | long -- size
+             * I don't save file's peers. It is pointless.
+             */
+
+            out.writeInt(newFileId.get());
+            out.writeInt(files.size());
+            for (FileInfo file : files) {
+                out.writeInt(file.id);
+                out.writeUTF(file.name);
+                out.writeLong(file.size);
+            }
+
+            out.close();
+        } catch (Exception e) {
+            GlobalFunctions.printWarning("Could not save server state. See trace.");
+            e.printStackTrace();
+
+            File backup = new File(BACKUP_FILE);
+            if (backup.exists()) {
+                if (!backup.delete()) {
+                    GlobalFunctions.printWarning("Could not delete incomplete backup file.");
+                }
+            }
+        }
+    }
+
+    private boolean restoreState() {
+        try {
+            File backup = new File(BACKUP_FILE);
+            if (!backup.exists()) {
+                GlobalFunctions.printWarning("Backup file not found. Will create new clean server.");
+                return false;
+            }
+
+            FileInputStream fileInputStream = new FileInputStream(backup);
+            DataInputStream in = new DataInputStream(fileInputStream);
+
+            newFileId.set(in.readInt());
+            int count = in.readInt();
+            for (int i = 0; i < count; i++) {
+                int id = in.readInt();
+                String name = in.readUTF();
+                long size = in.readLong();
+
+                FileInfo file = new FileInfo(id, name, size);
+                files.add(file);
+            }
+
+            in.close();
+
+            return true;
+        } catch (Exception e) {
+            GlobalFunctions.printWarning("Could not restore state. See trace.");
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     private class TrackerRunner implements Runnable {
         @Override
         public void run() {
@@ -160,6 +247,9 @@ public class TorrentTracker implements Server, TrackerExecutor {
                     Socket socket = serverSocket.accept();
                     ClientListener clientListener = new ClientListener(TorrentTracker.this, socket);
                     listenersPool.submit(clientListener);
+
+                    GlobalFunctions.printSuccess("accepted connection from <" + socket.getInetAddress().toString() +
+                            ":" + socket.getPort() + ">");
                 }
             } catch (IOException e) {
                 if (status == TrackerStatus.RUNNING) {

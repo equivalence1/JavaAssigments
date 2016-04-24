@@ -119,6 +119,13 @@ public class ClientListener implements Runnable {
         GlobalFunctions.printInfo("Client <" + socket.getInetAddress().toString() +
                 ":" + socket.getPort() + "> disconnected.");
         closeSocket();
+
+        /**
+         * after disconnect we don't consider this user as peer
+         */
+        for (FileInfo file : client.files) {
+            file.removePeer(client);
+        }
     }
 
     private void closeSocket() {

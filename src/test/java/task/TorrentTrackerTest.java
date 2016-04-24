@@ -165,7 +165,58 @@ public class TorrentTrackerTest {
     }
 
     @Test
+    public void testStateRestoring() throws Exception {
+        deleteBackup();
+
+        TorrentTracker tracker1 = new TorrentTracker();
+        tracker1.start();
+        Thread.sleep(100);
+
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(byteOut);
+
+        ClientInfo client = new ClientInfo(InetAddress.getLocalHost(), (short)1);
+
+        FileInfo file1 = new FileInfo(0, "name1", 100);
+        tracker1.executeUpload(client, file1.name, file1.size, out);
+
+        FileInfo file2 = new FileInfo(1, "name2", 200);
+        tracker1.executeUpload(client, file2.name, file2.size, out);
+
+        tracker1.stop();
+        Thread.sleep(100);
+
+        TorrentTracker tracker2 = new TorrentTracker();
+        tracker2.start();
+        Thread.sleep(100);
+
+        byteOut.reset();
+
+        tracker2.executeList(out);
+
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(byteOut.toByteArray());
+        DataInputStream in = new DataInputStream(byteIn);
+
+        // count check
+        assertEquals(2, in.readInt());
+
+        // file1 check
+        assertEquals(file1.id, in.readInt());
+        assertEquals(file1.name, in.readUTF());
+        assertEquals(file1.size, in.readLong());
+
+        // file2 check
+        assertEquals(file2.id, in.readInt());
+        assertEquals(file2.name, in.readUTF());
+        assertEquals(file2.size, in.readLong());
+
+        tracker2.stop();
+    }
+
+    @Test
     public void testGeneralServerSideWork() throws Exception {
+        deleteBackup();
+
         TorrentTracker tracker = new TorrentTracker();
         tracker.start();
         Thread.sleep(100);
@@ -175,8 +226,14 @@ public class TorrentTrackerTest {
         String fileName = "some_name";
         long fileSize = 100500L;
         doUpload(socket1, fileName, fileSize);
+
+        Thread.sleep(100);
+        DataInputStream in1 = new DataInputStream(socket1.getInputStream());
+        assertEquals(0, in1.readInt());
+
         doUpdate(socket1, firstPort, Lists.newArrayList(0));
         Thread.sleep(100);
+        assertEquals(true, in1.readBoolean());
 
         Socket socket2 = new Socket(SERVER_HOST, SERVER_PORT);
         short secondPort = 1002;
@@ -212,6 +269,13 @@ public class TorrentTrackerTest {
         }
 
         tracker.stop();
+    }
+
+    private void deleteBackup() {
+        File backup = new File("server.bak");
+        if (backup.exists()) {
+            assertEquals(true, backup.delete());
+        }
     }
 
     private void doList(Socket socket) throws IOException {
