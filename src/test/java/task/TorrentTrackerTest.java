@@ -3,12 +3,12 @@ package task;
 import com.google.common.collect.Lists;
 import org.junit.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import java.io.*;
 import java.net.InetAddress;
+import java.net.Socket;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.Assert.*;
 
@@ -18,8 +18,13 @@ import static org.junit.Assert.*;
  * @author Kravchenko Dima
  */
 public class TorrentTrackerTest {
-    private static final String serverHost = "localhost";
-    private static final short serverPort = 8081;
+    private static final String SERVER_HOST = "localhost";
+    private static final short SERVER_PORT = 8081;
+
+    private static final byte LIST_QUERY_CODE     = 1;
+    private static final byte UPLOAD_QUERY_CODE   = 2;
+    private static final byte SOURCES_QUERY_CODE  = 3;
+    private static final byte UPDATE_QUERY_CODE   = 4;
 
     @Test
     public void testStartAndStop() throws Exception {
@@ -112,12 +117,14 @@ public class TorrentTrackerTest {
         ByteArrayInputStream byteIn = new ByteArrayInputStream(byteOut.toByteArray());
         DataInputStream in = new DataInputStream(byteIn);
 
+        byte realIp[] = InetAddress.getLocalHost().getAddress();
         byte ip[] = new byte[4];
         boolean isPeer[] = new boolean[4];
 
         assertEquals(2, in.readInt());
         for (int i = 0; i < 2; i++) {
-            in.read(ip);
+            assertEquals(4, in.read(ip));
+            assertArrayEquals(realIp, ip);
             isPeer[in.readShort()] = true;
         }
 
@@ -155,6 +162,99 @@ public class TorrentTrackerTest {
         in = new DataInputStream(byteIn);
 
         assertEquals(true, in.readBoolean());
+    }
+
+    @Test
+    public void testGeneralServerSideWork() throws Exception {
+        TorrentTracker tracker = new TorrentTracker();
+        tracker.start();
+        Thread.sleep(100);
+
+        Socket socket1 = new Socket(SERVER_HOST, SERVER_PORT);
+        short firstPort = 1001;
+        String fileName = "some_name";
+        long fileSize = 100500L;
+        doUpload(socket1, fileName, fileSize);
+        doUpdate(socket1, firstPort, Lists.newArrayList(0));
+        Thread.sleep(100);
+
+        Socket socket2 = new Socket(SERVER_HOST, SERVER_PORT);
+        short secondPort = 1002;
+        doUpdate(socket2, secondPort, Lists.newArrayList(0));
+        Thread.sleep(100);
+
+        Socket socket3 = new Socket(SERVER_HOST, SERVER_PORT);
+        DataInputStream in = new DataInputStream(socket3.getInputStream());
+
+        doList(socket3);
+        if (!waitForResponse(in)) {
+            throw new TimeoutException("no response from server");
+        }
+
+        // list query check
+        assertEquals(1, in.readInt());
+        assertEquals(0, in.readInt());
+        assertEquals(fileName, in.readUTF());
+        assertEquals(fileSize, in.readLong());
+
+        doSources(socket3, 0);
+
+        byte ip[] = new byte[4];
+        short port;
+
+        // source query check
+        assertEquals(2, in.readInt());
+        for (int i = 0; i < 2; i++) {
+            assertEquals(4, in.read(ip));
+            assertArrayEquals(socket1.getInetAddress().getAddress(), ip);
+            port = in.readShort();
+            assertTrue((port == firstPort) || (port == secondPort));
+        }
+
+        tracker.stop();
+    }
+
+    private void doList(Socket socket) throws IOException {
+        DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+        out.writeByte(LIST_QUERY_CODE);
+        out.flush();
+    }
+
+    private void doUpload(Socket socket, String name, Long size) throws IOException {
+        DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+
+        out.writeByte(UPLOAD_QUERY_CODE);
+        out.writeUTF(name);
+        out.writeLong(size);
+        out.flush();
+    }
+
+    private void doSources(Socket socket, int id) throws IOException {
+        DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+        out.writeByte(SOURCES_QUERY_CODE);
+        out.writeInt(id);
+        out.flush();
+    }
+
+    private void doUpdate(Socket socket, short port, List<Integer> ids) throws IOException {
+        DataOutputStream out = new DataOutputStream((socket.getOutputStream()));
+
+        out.writeByte(UPDATE_QUERY_CODE);
+        out.writeShort(port);
+        out.writeInt(ids.size());
+        for (int id : ids) {
+            out.writeInt(id);
+        }
+        out.flush();
+    }
+
+    private boolean waitForResponse(DataInputStream in) throws Exception { // 1 second max
+        for (int n = 0; n < 10; n++) {
+            if (in.available() != 0)
+                return true;
+            Thread.sleep(100);
+        }
+        return false;
     }
 
 }

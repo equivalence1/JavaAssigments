@@ -15,6 +15,7 @@ public class ClientInfo {
     public short port;
 
     public Set<FileInfo> files;
+    private long lastUpdateTimeSec;
 
     /**
      * Unlike FileInfo no need of any locks here.
@@ -22,19 +23,28 @@ public class ClientInfo {
      * (it is its client listener).
      */
 
-    ClientInfo(InetAddress address, short port) {
+    public ClientInfo(InetAddress address, short port) {
         this.address = address;
         this.port = port;
 
         files = new HashSet<>();
+        update();
     }
 
-    void addFile(FileInfo file) {
+    public void addFile(FileInfo file) {
         files.add(file);
     }
 
-    void removeFile(FileInfo file) {
+    public void removeFile(FileInfo file) {
         files.remove(file);
+    }
+
+    public void update() {
+        lastUpdateTimeSec = System.currentTimeMillis() / 1000;
+    }
+
+    public long sinceLastUpdateSec() {
+        return (System.currentTimeMillis() / 1000 - lastUpdateTimeSec);
     }
 
 }

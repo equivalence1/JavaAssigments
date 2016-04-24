@@ -20,7 +20,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class TorrentTracker implements Server, TrackerExecutor {
 
     /**
-     * I don't need port to be public in this implementation.
+     * I don't need PORT to be public in this implementation.
      * But I think it can be useful if somebody wants to
      * use this server.
      *
@@ -28,7 +28,8 @@ public class TorrentTracker implements Server, TrackerExecutor {
      * but I think it can be useful to get status of the
      * server.
      */
-    public static final short port = 8081;
+    public static final short PORT = 8081;
+
     public TrackerStatus status = TrackerStatus.STOPPED;
 
     private ServerSocket serverSocket;
@@ -151,13 +152,13 @@ public class TorrentTracker implements Server, TrackerExecutor {
     private class TrackerRunner implements Runnable {
         @Override
         public void run() {
-            try (ServerSocket serverSocket = new ServerSocket(port)) {
+            try (ServerSocket serverSocket = new ServerSocket(PORT)) {
                 TorrentTracker.this.status = TrackerStatus.RUNNING;
                 TorrentTracker.this.serverSocket = serverSocket; // I need to know this socket in stop()
 
                 while (true) {
                     Socket socket = serverSocket.accept();
-                    ClientListener clientListener = new ClientListener(socket);
+                    ClientListener clientListener = new ClientListener(TorrentTracker.this, socket);
                     listenersPool.submit(clientListener);
                 }
             } catch (IOException e) {
@@ -168,4 +169,5 @@ public class TorrentTracker implements Server, TrackerExecutor {
             }
         }
     }
+
 }
