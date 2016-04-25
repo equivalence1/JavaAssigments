@@ -1,4 +1,7 @@
-package task;
+package task.server;
+
+import task.GlobalConstans;
+import task.GlobalFunctions;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -16,18 +19,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * @author Kravchenko Dima
  */
-public class TorrentTracker implements Server, TrackerExecutor {
-    /**
-     * I don't need PORT to be public in this implementation.
-     * But I think it can be useful if somebody wants to
-     * use this server.
-     *
-     * The same with BACKUP_FILE and state. I could make it package-local
-     * but I think it can be useful to get status of the
-     * server.
-     */
-    public static final short PORT = 8081;
-    public static final String BACKUP_FILE = "server.bak";
+public class TorrentTracker implements TrackerServer, TrackerExecutor {
 
     public TrackerStatus status = TrackerStatus.STOPPED;
 
@@ -39,7 +31,6 @@ public class TorrentTracker implements Server, TrackerExecutor {
     private AtomicInteger newFileId;
 
     public TorrentTracker() {
-        listenersPool = Executors.newCachedThreadPool();
         filesLock = new ReentrantReadWriteLock();
         newFileId = new AtomicInteger(0);
         files = new ArrayList<>();
@@ -47,11 +38,16 @@ public class TorrentTracker implements Server, TrackerExecutor {
 
     @Override
     public void start() {
+        if (status != TrackerStatus.STOPPED) {
+            return;
+        }
+
         if (!restoreState()) {
             newFileId.set(0);
             files = new ArrayList<>();
         }
 
+        listenersPool = Executors.newCachedThreadPool();
         TrackerRunner trackerRunner = new TrackerRunner();
         Thread trackerThread = new Thread(trackerRunner);
         trackerThread.start();
@@ -59,6 +55,10 @@ public class TorrentTracker implements Server, TrackerExecutor {
 
     @Override
     public void stop() {
+        if (status != TrackerStatus.RUNNING) {
+            return;
+        }
+
         status = TrackerStatus.STOPPED;
         listenersPool.shutdown();
 
@@ -157,7 +157,7 @@ public class TorrentTracker implements Server, TrackerExecutor {
 
     private void saveState() {
         try {
-            File backup = new File(BACKUP_FILE);
+            File backup = new File(GlobalConstans.SERVER_BACKUP_FILE);
             if (backup.exists()) {
                 if (!backup.delete()) {
                     throw new IOException("could not delete old backup");
@@ -171,8 +171,7 @@ public class TorrentTracker implements Server, TrackerExecutor {
             DataOutputStream out = new DataOutputStream(fileOutputStream);
 
             /**
-             *
-             * File structure
+             * Buckup file structure
              * 1. int -- newFileId value;
              * 2. int -- files.size
              * 3. files themselves.
@@ -195,7 +194,7 @@ public class TorrentTracker implements Server, TrackerExecutor {
             GlobalFunctions.printWarning("Could not save server state. See trace.");
             e.printStackTrace();
 
-            File backup = new File(BACKUP_FILE);
+            File backup = new File(GlobalConstans.SERVER_BACKUP_FILE);
             if (backup.exists()) {
                 if (!backup.delete()) {
                     GlobalFunctions.printWarning("Could not delete incomplete backup file.");
@@ -206,7 +205,7 @@ public class TorrentTracker implements Server, TrackerExecutor {
 
     private boolean restoreState() {
         try {
-            File backup = new File(BACKUP_FILE);
+            File backup = new File(GlobalConstans.SERVER_BACKUP_FILE);
             if (!backup.exists()) {
                 GlobalFunctions.printWarning("Backup file not found. Will create new clean server.");
                 return false;
@@ -227,7 +226,6 @@ public class TorrentTracker implements Server, TrackerExecutor {
             }
 
             in.close();
-
             return true;
         } catch (Exception e) {
             GlobalFunctions.printWarning("Could not restore state. See trace.");
@@ -239,7 +237,7 @@ public class TorrentTracker implements Server, TrackerExecutor {
     private class TrackerRunner implements Runnable {
         @Override
         public void run() {
-            try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            try (ServerSocket serverSocket = new ServerSocket(GlobalConstans.PORT)) {
                 TorrentTracker.this.status = TrackerStatus.RUNNING;
                 TorrentTracker.this.serverSocket = serverSocket; // I need to know this socket in stop()
 

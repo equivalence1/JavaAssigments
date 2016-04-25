@@ -1,4 +1,7 @@
-package task;
+package task.server;
+
+import task.GlobalConstans;
+import task.GlobalFunctions;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -13,13 +16,6 @@ import java.util.List;
  * @author Kravchenko Dima
  */
 public class ClientListener implements Runnable {
-
-    private static final int UPDATE_TL = 5 * 60; // 5 min;
-
-    private static final byte LIST_QUERY_CODE     = 1;
-    private static final byte UPLOAD_QUERY_CODE   = 2;
-    private static final byte SOURCES_QUERY_CODE  = 3;
-    private static final byte UPDATE_QUERY_CODE   = 4;
 
     private TorrentTracker tracker;
 
@@ -45,7 +41,7 @@ public class ClientListener implements Runnable {
             in = new DataInputStream(socket.getInputStream());
             out = new DataOutputStream(socket.getOutputStream());
 
-            while (client.sinceLastUpdateSec() <= UPDATE_TL &&
+            while (client.sinceLastUpdateSec() <= GlobalConstans.UPDATE_TL &&
                     tracker.status == TorrentTracker.TrackerStatus.RUNNING) {
                 if (hasPendingQuery()) {
                     handleQuery();
@@ -68,16 +64,16 @@ public class ClientListener implements Runnable {
     private void handleQuery() throws IOException {
         byte queryCode = in.readByte();
         switch (queryCode) {
-            case LIST_QUERY_CODE:
+            case GlobalConstans.LIST_QUERY_CODE:
                 handleListQuery();
                 break;
-            case UPLOAD_QUERY_CODE:
+            case GlobalConstans.UPLOAD_QUERY_CODE:
                 handleUploadQuery();
                 break;
-            case SOURCES_QUERY_CODE:
+            case GlobalConstans.SOURCES_QUERY_CODE:
                 handleSourcesQuery();
                 break;
-            case UPDATE_QUERY_CODE:
+            case GlobalConstans.UPDATE_QUERY_CODE:
                 handleUpdateQuery();
                 break;
         }

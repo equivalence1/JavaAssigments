@@ -1,11 +1,11 @@
-package task;
+package task.server;
 
 /**
  * Created by equi on 22.04.16.
  *
  * @author Kravchenko Dima
  */
-public interface Server {
+public interface TrackerServer {
 
     void start();
 

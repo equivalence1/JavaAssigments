@@ -1,4 +1,4 @@
-package task;
+package task.server;
 
 import java.io.DataOutputStream;
 import java.io.IOException;

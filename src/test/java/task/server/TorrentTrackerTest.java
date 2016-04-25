@@ -1,7 +1,8 @@
-package task;
+package task.server;
 
 import com.google.common.collect.Lists;
 import org.junit.Test;
+import task.GlobalConstans;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -18,13 +19,9 @@ import static org.junit.Assert.*;
  * @author Kravchenko Dima
  */
 public class TorrentTrackerTest {
+
     private static final String SERVER_HOST = "localhost";
     private static final short SERVER_PORT = 8081;
-
-    private static final byte LIST_QUERY_CODE     = 1;
-    private static final byte UPLOAD_QUERY_CODE   = 2;
-    private static final byte SOURCES_QUERY_CODE  = 3;
-    private static final byte UPDATE_QUERY_CODE   = 4;
 
     @Test
     public void testStartAndStop() throws Exception {
@@ -35,6 +32,7 @@ public class TorrentTrackerTest {
         assertEquals(TorrentTracker.TrackerStatus.RUNNING, tracker.status);
         tracker.stop();
         assertEquals(TorrentTracker.TrackerStatus.STOPPED, tracker.status);
+        deleteBackup();
     }
 
     @Test
@@ -211,6 +209,7 @@ public class TorrentTrackerTest {
         assertEquals(file2.size, in.readLong());
 
         tracker2.stop();
+        deleteBackup();
     }
 
     @Test
@@ -269,6 +268,7 @@ public class TorrentTrackerTest {
         }
 
         tracker.stop();
+        deleteBackup();
     }
 
     private void deleteBackup() {
@@ -280,14 +280,14 @@ public class TorrentTrackerTest {
 
     private void doList(Socket socket) throws IOException {
         DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-        out.writeByte(LIST_QUERY_CODE);
+        out.writeByte(GlobalConstans.LIST_QUERY_CODE);
         out.flush();
     }
 
     private void doUpload(Socket socket, String name, Long size) throws IOException {
         DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 
-        out.writeByte(UPLOAD_QUERY_CODE);
+        out.writeByte(GlobalConstans.UPLOAD_QUERY_CODE);
         out.writeUTF(name);
         out.writeLong(size);
         out.flush();
@@ -295,7 +295,7 @@ public class TorrentTrackerTest {
 
     private void doSources(Socket socket, int id) throws IOException {
         DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-        out.writeByte(SOURCES_QUERY_CODE);
+        out.writeByte(GlobalConstans.SOURCES_QUERY_CODE);
         out.writeInt(id);
         out.flush();
     }
@@ -303,7 +303,7 @@ public class TorrentTrackerTest {
     private void doUpdate(Socket socket, short port, List<Integer> ids) throws IOException {
         DataOutputStream out = new DataOutputStream((socket.getOutputStream()));
 
-        out.writeByte(UPDATE_QUERY_CODE);
+        out.writeByte(GlobalConstans.UPDATE_QUERY_CODE);
         out.writeShort(port);
         out.writeInt(ids.size());
         for (int id : ids) {

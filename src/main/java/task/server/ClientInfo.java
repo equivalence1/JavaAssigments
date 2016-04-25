@@ -1,4 +1,4 @@
-package task;
+package task.server;
 
 import java.net.InetAddress;
 import java.util.HashSet;
