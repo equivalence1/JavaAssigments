@@ -109,6 +109,8 @@ public class ClientListener implements Runnable {
         client.port = port;
 
         tracker.executeUpdate(client, fileIds, out);
+
+        client.update();
     }
 
     private void disconnect() {

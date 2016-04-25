@@ -45,7 +45,6 @@ public class TorrentClientServer {
     }
 
     public void handleStatQuery(DataInputStream in, DataOutputStream out) throws IOException {
-        GlobalFunctions.printInfo("handling stat query");
         int id = in.readInt();
 
         torrentClient.filesLock.readLock().lock();
@@ -92,11 +91,10 @@ public class TorrentClientServer {
     }
 
     private void startHandleConnections() {
-        GlobalFunctions.printInfo("Starting to accept connections.");
-
         try (ServerSocket serverSocket = new ServerSocket(torrentClient.port)) {
+            GlobalFunctions.printInfo("Starting to accept connections. Current port is " + torrentClient.port);
             currentServerSocket = serverSocket;
-            while (torrentClient.status != TorrentClient.ClientStates.RUNNING) {
+            while (torrentClient.status == TorrentClient.ClientStates.RUNNING) {
                 acceptNewConnection(serverSocket);
             }
         } catch (Exception e) {

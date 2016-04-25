@@ -15,7 +15,9 @@ public class TorrentTrackerConsole {
         TorrentTracker tracker = new TorrentTracker();
         Scanner in = new Scanner(System.in);
 
-        while (in.hasNextLine()) {
+        boolean wasStopped = false;
+
+        while (in.hasNextLine() && !wasStopped) {
             String command = in.nextLine();
             switch (command) {
                 case "start":
@@ -27,6 +29,7 @@ public class TorrentTrackerConsole {
                     }
                     break;
                 case "stop":
+                    wasStopped = true;
                     break;
                 default:
                     printUsage();

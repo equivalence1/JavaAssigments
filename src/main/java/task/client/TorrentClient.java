@@ -44,6 +44,9 @@ public class TorrentClient {
                 update();
             }
         };
+        files = new HashMap<>();
+        filesLock = new ReentrantReadWriteLock();
+        clientServer = new TorrentClientServer(this);
     }
 
     public void start() {
@@ -52,9 +55,10 @@ public class TorrentClient {
         }
 
         if (!restoreState()) {
+            GlobalFunctions.printWarning("Backup not found. Will create new clean client.");
             files = new HashMap<>();
-            clientServer = new TorrentClientServer(this);
-            filesLock = new ReentrantReadWriteLock();
+        } else {
+            GlobalFunctions.printSuccess("Client was successfully restored from backup.");
         }
 
         try {
@@ -79,13 +83,12 @@ public class TorrentClient {
         if (status == ClientStates.DOWN) {
             return;
         }
+        status = ClientStates.DOWN;
 
         clientServer.stop();
         updateTimer.cancel();
         closeSocket();
         saveState();
-
-        status = ClientStates.DOWN;
     }
 
     public ArrayList<ListResponseEntry> list() throws IOException, TimeoutException {
@@ -181,7 +184,7 @@ public class TorrentClient {
         }
     }
 
-    public ArrayList<Integer> stat(String ip, Short port, int id) throws IOException, TimeoutException {
+    public ArrayList<Integer> stat(String ip, short port, int id) throws IOException, TimeoutException {
         try (
                 Socket socket = new Socket(ip, port);
                 DataInputStream in = new DataInputStream(socket.getInputStream());
@@ -235,7 +238,7 @@ public class TorrentClient {
             filesLock.readLock().unlock();
 
             File file = new File(fileName);
-            RandomAccessFile rafile = new RandomAccessFile(file, "w");
+            RandomAccessFile rafile = new RandomAccessFile(file, "rw");
             if (!inFiles) {
                 rafile.setLength(fileSize);
             }
@@ -293,7 +296,7 @@ public class TorrentClient {
 
         filesLock.writeLock().lock();
         files.put(id, file);
-        filesLock.writeLock().lock();
+        filesLock.writeLock().unlock();
     }
 
     private boolean restoreState() {
@@ -336,7 +339,7 @@ public class TorrentClient {
 
     private void saveState() {
         try {
-            File backup = new File(GlobalConstans.SERVER_BACKUP_FILE);
+            File backup = new File(GlobalConstans.CLIENT_BACKUP_FILE);
             if (backup.exists()) {
                 if (!backup.delete()) {
                     throw new IOException("could not delete old backup");
@@ -380,6 +383,8 @@ public class TorrentClient {
             }
 
             out.close();
+
+            GlobalFunctions.printSuccess("Client backup successfully saved.");
         } catch (Exception e) {
             GlobalFunctions.printWarning("Could not save client state. See trace.");
             e.printStackTrace();

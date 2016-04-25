@@ -272,7 +272,7 @@ public class TorrentTrackerTest {
     }
 
     private void deleteBackup() {
-        File backup = new File("server.bak");
+        File backup = new File(GlobalConstans.SERVER_BACKUP_FILE);
         if (backup.exists()) {
             assertEquals(true, backup.delete());
         }

@@ -106,7 +106,15 @@ public class TorrentTracker implements TrackerServer, TrackerExecutor {
 
     @Override
     public void executeSources(int id, DataOutputStream out) throws IOException {
+        if (id >= files.size()) {
+            out.writeInt(0);
+            out.flush();
+            return;
+        }
+
+        filesLock.readLock().lock();
         FileInfo file = files.get(id);
+        filesLock.readLock().unlock();
 
         try {
             file.peersLock.readLock().lock();
@@ -130,6 +138,7 @@ public class TorrentTracker implements TrackerServer, TrackerExecutor {
             }
             clientInfo.files.clear();
 
+            filesLock.readLock().lock();
             for (int id : ids) {
                 if (id >= files.size()) {
                     out.writeBoolean(false);
@@ -145,10 +154,15 @@ public class TorrentTracker implements TrackerServer, TrackerExecutor {
             out.writeBoolean(false);
             out.flush();
             throw e;
+        } finally {
+            filesLock.readLock().unlock();
         }
 
         out.writeBoolean(true);
         out.flush();
+
+        GlobalFunctions.printInfo("Update from <" + clientInfo.address.toString() + ":" +
+                clientInfo.port + "> written.");
     }
 
     public enum TrackerStatus {
@@ -190,6 +204,8 @@ public class TorrentTracker implements TrackerServer, TrackerExecutor {
             }
 
             out.close();
+
+            GlobalFunctions.printSuccess("Server backup successfully saved.");
         } catch (Exception e) {
             GlobalFunctions.printWarning("Could not save server state. See trace.");
             e.printStackTrace();
@@ -226,6 +242,8 @@ public class TorrentTracker implements TrackerServer, TrackerExecutor {
             }
 
             in.close();
+
+            GlobalFunctions.printSuccess("Tracker was successfully restored from backup.");
             return true;
         } catch (Exception e) {
             GlobalFunctions.printWarning("Could not restore state. See trace.");
